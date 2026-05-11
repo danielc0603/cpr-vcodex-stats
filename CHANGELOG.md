@@ -15,7 +15,11 @@ where Daniel started publishing his own firmware builds.
 
 Published as GitHub release:
 
-- Pending release tag: `1.2.0.46-cpr-vcodex`
+- [`1.2.0.46-cpr-vcodex`](https://github.com/danielc0603/cpr-vcodex-stats/releases/tag/1.2.0.46-cpr-vcodex)
+
+Flashable firmware:
+
+- `1.2.0.46-cpr-vcodex.bin`
 
 ### Reading Time-Left Estimates
 
@@ -71,6 +75,10 @@ pio run -e default
   - RAM usage: `102164 / 327680 bytes`;
   - packaged dev firmware:
     `artifacts/1.2.0.45.dev3-bff7436-cpr-vcodex.bin`.
+- Release gate passed with:
+  - flash usage: `6130383 / 6553600 bytes`;
+  - RAM usage: `102140 / 327680 bytes`;
+  - packaged firmware size: `6142944 bytes`.
 
 ## Stats Preview 0.1.0
 
