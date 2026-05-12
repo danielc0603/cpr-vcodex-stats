@@ -8,6 +8,8 @@ class ReaderQuickSettingsActivity final : public Activity {
   int selectedTab = 0;
   int selectedIndex = 0;
   bool tabFocused = true;
+  bool waitForConfirmRelease = false;
+  bool waitForBackRelease = false;
 
   void adjustSelected(int direction);
   int currentItemCount() const;

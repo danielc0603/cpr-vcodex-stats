@@ -25,6 +25,7 @@
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "QrDisplayActivity.h"
+#include "ReaderQuickSettingsActivity.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "activities/apps/ReadingStatsDetailActivity.h"
@@ -665,8 +666,12 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
     }
     case EpubReaderMenuActivity::MenuAction::QUICK_SETTINGS: {
       READING_STATS.noteActivity();
-      READING_STATS.resumeSession();
-      openQuickSettingsOverlay();
+      startActivityForResult(std::make_unique<ReaderQuickSettingsActivity>(renderer, mappedInput),
+                             [this](const ActivityResult&) {
+                               READING_STATS.resumeSession();
+                               section.reset();
+                               requestUpdate();
+                             });
       break;
     }
     case EpubReaderMenuActivity::MenuAction::DISPLAY_QR: {

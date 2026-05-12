@@ -26,11 +26,11 @@
 #include "util/TimeUtils.h"
 
 namespace {
-constexpr int COVER_WIDTH = 96;
-constexpr int COVER_HEIGHT = 140;
-constexpr int DONUT_RADIUS = 54;
-constexpr int DONUT_THICKNESS = 9;
-constexpr int METRIC_ROW_HEIGHT = 46;
+constexpr int COVER_WIDTH = 104;
+constexpr int COVER_HEIGHT = 154;
+constexpr int DONUT_RADIUS = 24;
+constexpr int DONUT_THICKNESS = 5;
+constexpr int METRIC_ROW_HEIGHT = 70;
 constexpr int DETAIL_FOCUS_ITEM_COUNT = 2;
 constexpr int DETAIL_ADJUST_FOCUS_INDEX = 1;
 constexpr int ADJUST_BUTTON_SIZE = 54;
@@ -254,7 +254,7 @@ bool pointInProgressArc(const int dx, const int dy, const float progress) {
 }
 
 void drawDonutGauge(GfxRenderer& renderer, const int cx, const int cy, const int radius, const int thickness,
-                    const uint8_t percent) {
+                    const uint8_t percent, const char* label) {
   const int innerRadius = std::max(2, radius - thickness);
   const int outer2 = radius * radius;
   const int inner2 = innerRadius * innerRadius;
@@ -273,7 +273,11 @@ void drawDonutGauge(GfxRenderer& renderer, const int cx, const int cy, const int
     }
   }
   const std::string percentText = std::to_string(std::min<int>(percent, 100)) + "%";
-  renderer.drawText(UI_12_FONT_ID, cx - 18, cy - 8, percentText.c_str(), true, EpdFontFamily::BOLD);
+  const int percentWidth = renderer.getTextWidth(UI_10_FONT_ID, percentText.c_str(), EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, cx - percentWidth / 2, cy - 7, percentText.c_str(), true, EpdFontFamily::BOLD);
+  const std::string labelText = renderer.truncatedText(SMALL_FONT_ID, label, radius * 2 + 8);
+  const int labelWidth = renderer.getTextWidth(SMALL_FONT_ID, labelText.c_str());
+  renderer.drawText(SMALL_FONT_ID, cx - labelWidth / 2, cy + radius + 7, labelText.c_str());
 }
 
 void drawAdjustTimeButton(GfxRenderer& renderer, const Rect& rect, const bool selected) {
@@ -319,16 +323,17 @@ void drawStatsTableRow(GfxRenderer& renderer, const Rect& rect, const char* labe
   }
   renderer.drawLine(rect.x, rect.y + rect.height, rect.x + rect.width, rect.y + rect.height);
 
-  const int labelWidth = (rect.width * 42) / 100;
-  const int valueX = rect.x + labelWidth + 8;
-  const int valueWidth = rect.width - labelWidth - 18;
-  const std::string labelText = renderer.truncatedText(UI_10_FONT_ID, label, labelWidth - 12, EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, rect.x + 10, rect.y + 14, labelText.c_str(), true, EpdFontFamily::BOLD);
+  const auto labelLines = renderer.wrappedText(SMALL_FONT_ID, label, rect.width - 20, 2, EpdFontFamily::BOLD);
+  int y = rect.y + 6;
+  for (const auto& line : labelLines) {
+    renderer.drawText(SMALL_FONT_ID, rect.x + 10, y, line.c_str(), true, EpdFontFamily::BOLD);
+    y += renderer.getLineHeight(SMALL_FONT_ID);
+  }
 
-  const auto lines = renderer.wrappedText(UI_10_FONT_ID, value.c_str(), valueWidth, 2, EpdFontFamily::REGULAR);
-  int y = rect.y + (lines.size() > 1 ? 5 : 14);
+  const auto lines = renderer.wrappedText(UI_10_FONT_ID, value.c_str(), rect.width - 20, 2, EpdFontFamily::REGULAR);
+  y += 2;
   for (const auto& line : lines) {
-    renderer.drawText(UI_10_FONT_ID, valueX, y, line.c_str(), true, EpdFontFamily::REGULAR);
+    renderer.drawText(UI_10_FONT_ID, rect.x + 10, y, line.c_str(), true, EpdFontFamily::REGULAR);
     y += renderer.getLineHeight(UI_10_FONT_ID);
   }
 }
@@ -589,24 +594,23 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
   const Rect adjustButtonBaseRect{coverBaseRect.x + (coverBaseRect.width - ADJUST_BUTTON_SIZE) / 2,
                                   coverBaseRect.y + coverBaseRect.height + metrics.verticalSpacing,
                                   ADJUST_BUTTON_SIZE, ADJUST_BUTTON_SIZE};
-  const int textX = coverBaseRect.x + coverBaseRect.width + 16;
-  const int textWidth = pageWidth - textX - metrics.contentSidePadding;
-
-  int currentY = contentTop + 6;
-  const int titleTop = currentY;
+  const int donutAreaX = coverBaseRect.x + coverBaseRect.width + 12;
+  const int donutAreaWidth = pageWidth - donutAreaX - metrics.contentSidePadding;
+  const int firstDonutX = donutAreaX + std::min(28, donutAreaWidth / 3);
+  const int secondDonutX = donutAreaX + donutAreaWidth - std::min(28, donutAreaWidth / 3);
+  const int donutY = contentTop + 42;
+  const int titleTop = contentTop + COVER_HEIGHT + metrics.verticalSpacing + 4;
+  const int titleWidth = pageWidth - metrics.contentSidePadding * 2;
   const auto wrappedTitle =
-      renderer.wrappedText(UI_12_FONT_ID, getDisplayTitle(*book).c_str(), textWidth, 2, EpdFontFamily::BOLD);
-  currentY += static_cast<int>(wrappedTitle.size()) * renderer.getLineHeight(UI_12_FONT_ID);
-
+      renderer.wrappedText(UI_12_FONT_ID, getDisplayTitle(*book).c_str(), titleWidth, 2, EpdFontFamily::BOLD);
+  int currentY = titleTop + static_cast<int>(wrappedTitle.size()) * renderer.getLineHeight(UI_12_FONT_ID);
   const int authorTop = currentY + 4;
-  if (!book->author.empty()) {
-    currentY += renderer.getLineHeight(UI_10_FONT_ID) + 10;
-  } else {
-    currentY += 10;
-  }
-
+  currentY += book->author.empty() ? 6 : renderer.getLineHeight(UI_10_FONT_ID) + 8;
   const std::string currentChapter = book->chapterTitle.empty() ? std::string(tr(STR_NOT_SET)) : book->chapterTitle;
-  currentY = std::max(currentY + 10, contentTop + DONUT_RADIUS * 2 + 18);
+  const int chapterTop = currentY + 4;
+  const auto chapterLines =
+      renderer.wrappedText(UI_10_FONT_ID, currentChapter.c_str(), titleWidth, 2, EpdFontFamily::REGULAR);
+  currentY = chapterTop + static_cast<int>(chapterLines.size()) * renderer.getLineHeight(UI_10_FONT_ID) + 8;
 
   int cardsTop = std::max(adjustButtonBaseRect.y + adjustButtonBaseRect.height, currentY) + metrics.verticalSpacing + 10;
   const int summaryBannerTop = cardsTop;
@@ -614,7 +618,7 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
     cardsTop += SUMMARY_BANNER_HEIGHT + SUMMARY_BANNER_GAP;
   }
 
-  constexpr int metricRowCount = 16;
+  constexpr int metricRowCount = 12;
   const int contentBottom = cardsTop + metricRowCount * METRIC_ROW_HEIGHT + metrics.verticalSpacing;
   maxScrollOffset = std::max(0, contentBottom - viewportBottom);
   scrollOffset = std::clamp(scrollOffset, 0, maxScrollOffset);
@@ -629,18 +633,30 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
     drawCover(renderer, coverRect, resolvedCoverBmpPath);
     drawAdjustTimeButton(renderer, adjustButtonRect, false);
 
+    drawDonutGauge(renderer, firstDonutX, donutY + scrollDy, DONUT_RADIUS, DONUT_THICKNESS,
+                   book->lastProgressPercent, tr(STR_BOOK));
+    drawDonutGauge(renderer, secondDonutX, donutY + scrollDy, DONUT_RADIUS, DONUT_THICKNESS,
+                   book->chapterProgressPercent, tr(STR_CHAPTER));
+
     currentY = titleTop + scrollDy;
     for (const auto& line : wrappedTitle) {
-      renderer.drawText(UI_12_FONT_ID, textX, currentY, line.c_str(), true, EpdFontFamily::BOLD);
+      renderer.drawText(UI_12_FONT_ID, metrics.contentSidePadding, currentY, line.c_str(), true, EpdFontFamily::BOLD);
       currentY += renderer.getLineHeight(UI_12_FONT_ID);
     }
 
     if (!book->author.empty()) {
-      renderer.drawText(UI_10_FONT_ID, textX, authorTop + scrollDy, book->author.c_str());
+      const std::string author =
+          renderer.truncatedText(UI_10_FONT_ID, book->author.c_str(), titleWidth, EpdFontFamily::REGULAR);
+      renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, authorTop + scrollDy, author.c_str());
     }
 
-    drawDonutGauge(renderer, textX + textWidth / 2, contentTop + DONUT_RADIUS + 18 + scrollDy, DONUT_RADIUS,
-                   DONUT_THICKNESS, book->lastProgressPercent);
+    int chapterY = chapterTop + scrollDy;
+    renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding, chapterY, tr(STR_CURRENT_CHAPTER));
+    chapterY += renderer.getLineHeight(SMALL_FONT_ID) + 2;
+    for (const auto& line : chapterLines) {
+      renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, chapterY, line.c_str());
+      chapterY += renderer.getLineHeight(UI_10_FONT_ID);
+    }
 
     int drawCardsTop = cardsTop + scrollDy;
     if (showCompletionBanner) {
@@ -684,11 +700,11 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
     };
     drawRow(tr(STR_LAST_SESSION), ReadingStatsAnalytics::formatDurationHm(book->lastSessionMs));
     drawRow(tr(STR_TOTAL_TIME), ReadingStatsAnalytics::formatDurationHm(book->totalReadingMs));
-    drawRow(tr(STR_BOOK_PROGRESS), std::to_string(book->lastProgressPercent) + "%");
-    drawRow(tr(STR_CHAPTER_PROGRESS), std::to_string(book->chapterProgressPercent) + "%");
-    drawRow(tr(STR_CURRENT_CHAPTER), currentChapter);
     drawRow(tr(STR_BOOK_TIME_LEFT), ReadingStatsAnalytics::formatTimeLeftEstimate(bookEstimate));
-    drawRow(tr(STR_CHAPTER_TIME_LEFT), chapterEstimateValue);
+    if (chapterEstimate.ready &&
+        chapterEstimate.confidence != ReadingStatsAnalytics::EstimateConfidence::LOW_CONFIDENCE) {
+      drawRow(tr(STR_CHAPTER_TIME_LEFT), chapterEstimateValue);
+    }
     drawRow(tr(STR_AVG_PACE),
             ReadingStatsAnalytics::formatProgressPace(ReadingStatsAnalytics::getAverageProgressPaceTenths(*book)));
     drawRow(tr(STR_RECENT_PACE),
@@ -699,16 +715,6 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
             context.showSessionSummary ? sessionProgressValue : std::to_string(book->sessions));
     drawRow(tr(STR_CONFIDENCE), confidenceValue);
     drawRow(tr(STR_ESTIMATE_STABILITY), ReadingStatsAnalytics::formatEstimateStability(*book));
-    drawRow(tr(STR_SESSION_PACE),
-            ReadingStatsAnalytics::formatProgressPace(
-                lastSessionSnapshot.valid && lastSessionSnapshot.path == bookPath && lastSessionSnapshot.sessionMs > 0 &&
-                        lastSessionSnapshot.endProgressPercent > lastSessionSnapshot.startProgressPercent
-                    ? static_cast<uint32_t>(((lastSessionSnapshot.endProgressPercent -
-                                              lastSessionSnapshot.startProgressPercent) *
-                                                 36000ULL +
-                                             lastSessionSnapshot.sessionMs / 2) /
-                                            lastSessionSnapshot.sessionMs)
-                    : 0));
     drawRow(tr(STR_START_END_DATE), formatDateRange(book->firstReadAt, getCompletionDateForDisplay(*book)));
 
     renderer.fillRect(0, 0, pageWidth, contentTop, false);

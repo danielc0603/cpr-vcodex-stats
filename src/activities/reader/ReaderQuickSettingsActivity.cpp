@@ -103,6 +103,8 @@ void ReaderQuickSettingsActivity::onEnter() {
   selectedTab = TAB_READER;
   selectedIndex = 0;
   tabFocused = true;
+  waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back);
   requestUpdate();
 }
 
@@ -169,12 +171,22 @@ void ReaderQuickSettingsActivity::adjustSelected(const int direction) {
 }
 
 void ReaderQuickSettingsActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    if (!tabFocused) {
-      tabFocused = true;
-      requestUpdate();
-      return;
+  if (waitForBackRelease) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Back) &&
+        !mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      waitForBackRelease = false;
     }
+    return;
+  }
+  if (waitForConfirmRelease) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+        !mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      waitForConfirmRelease = false;
+    }
+    return;
+  }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     finish();
     return;
   }
