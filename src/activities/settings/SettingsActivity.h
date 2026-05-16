@@ -43,8 +43,6 @@ enum class SettingAction {
   SleepApp,
   IfFound,
   FontSelection,
-  FontDownload,
-  InstalledFonts,
 };
 
 struct SettingInfo {

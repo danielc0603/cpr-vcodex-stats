@@ -196,7 +196,8 @@ void ReaderQuickSettingsActivity::adjustSelected(const int direction) {
 }
 
 void ReaderQuickSettingsActivity::openFontPicker() {
-  startActivityForResult(std::make_unique<FontSelectionActivity>(renderer, mappedInput, &sdFontSystem.registry()),
+  startActivityForResult(std::make_unique<FontSelectionActivity>(renderer, mappedInput, &sdFontSystem.registry(),
+                                                                 FontSelectionActivity::Mode::Select),
                          [this](const ActivityResult&) {
                            SETTINGS.saveToFile();
                            sdFontSystem.ensureLoaded(renderer);
@@ -221,6 +222,11 @@ void ReaderQuickSettingsActivity::loop() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (!tabFocused) {
+      tabFocused = true;
+      requestUpdate();
+      return;
+    }
     finish();
     return;
   }
@@ -234,12 +240,7 @@ void ReaderQuickSettingsActivity::loop() {
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      selectedTab = selectedTab == TAB_READER ? TAB_DISPLAY : TAB_READER;
       selectedIndex = 0;
-      requestUpdate();
-      return;
-    }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
       tabFocused = false;
       requestUpdate();
       return;
@@ -247,8 +248,7 @@ void ReaderQuickSettingsActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
-      mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (selectedTab == TAB_READER && selectedIndex == 0) {
       openFontPicker();
       return;
@@ -257,24 +257,17 @@ void ReaderQuickSettingsActivity::loop() {
     requestUpdate();
     return;
   }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-    if (selectedTab == TAB_READER && selectedIndex == 0) {
-      openFontPicker();
-      return;
-    }
-    adjustSelected(-1);
-    requestUpdate();
-    return;
-  }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Right)) {
     selectedIndex = ButtonNavigator::nextIndex(selectedIndex, currentItemCount());
     requestUpdate();
     return;
   }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Left)) {
     if (selectedIndex <= 0) {
-      tabFocused = true;
+      selectedIndex = currentItemCount() - 1;
     } else {
       selectedIndex--;
     }
@@ -309,7 +302,7 @@ void ReaderQuickSettingsActivity::render(RenderLock&&) {
       [this](int index) { return valueForIndex(selectedTab, index); }, true);
 
   auto labels = tabFocused ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT))
-                           : mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+                           : mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   if (!tabFocused && selectedTab == TAB_READER && selectedIndex == 0) {
     labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   }

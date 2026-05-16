@@ -7,18 +7,18 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .batteryHeight = 12,
                                  .topPadding = 0,
                                  .batteryBarHeight = 20,
-                                 .headerHeight = 48,
+                                 .headerHeight = 45,
                                  .verticalSpacing = 10,
                                  .contentSidePadding = 20,
                                  .listRowHeight = 42,
-                                 .listWithSubtitleRowHeight = 66,
-                                 .menuRowHeight = 46,
+                                 .listWithSubtitleRowHeight = 69,
+                                 .menuRowHeight = 42,
                                  .menuSpacing = 6,
                                  .tabSpacing = 10,
-                                 .tabBarHeight = 48,
+                                 .tabBarHeight = 50,
                                  .scrollBarWidth = 4,
                                  .scrollBarRightOffset = 5,
-                                 .homeTopPadding = 52,
+                                 .homeTopPadding = 55,
                                  .homeCoverHeight = 226,
                                  .homeCoverTileHeight = 242,
                                  .homeRecentBooksCount = 1,
@@ -28,16 +28,16 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .progressBarMarginTop = 1,
                                  .statusBarHorizontalMargin = 5,
                                  .statusBarVerticalMargin = 19,
-                                 .keyboardKeyWidth = 29,
-                                 .keyboardKeyHeight = 34,
-                                 .keyboardKeySpacing = 6,
-                                 .keyboardBottomKeyHeight = 32,
+                                 .keyboardKeyWidth = 22,
+                                 .keyboardKeyHeight = 30,
+                                 .keyboardKeySpacing = 10,
+                                 .keyboardBottomKeyHeight = 30,
                                  .keyboardBottomKeySpacing = 5,
                                  .keyboardBottomAligned = true,
                                  .keyboardCenteredText = false,
-                                 .keyboardVerticalOffset = -2,
+                                 .keyboardVerticalOffset = 0,
                                  .keyboardTextFieldWidthPercent = 85,
-                                 .keyboardWidthPercent = 92};
+                                 .keyboardWidthPercent = 90};
 }
 
 class RoundedRaffTheme final : public LyraTheme {
@@ -53,6 +53,16 @@ class RoundedRaffTheme final : public LyraTheme {
                 bool highlightValue, const std::function<bool(int index)>& rowCompleted = nullptr) const override;
   void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2,
                        const char* btn3, const char* btn4) const override;
+  void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
+                      const std::function<std::string(int index)>& buttonLabel,
+                      const std::function<UIIcon(int index)>& rowIcon,
+                      const std::function<std::string(int index)>& buttonSubtitle = nullptr,
+                      const std::function<bool(int index)>& showAccessory = nullptr) const override;
+  void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
+                           int selectorIndex, bool& coverRendered, bool& coverBufferStored, bool& bufferRestored,
+                           std::function<bool()> storeCoverBuffer) const override;
+  void drawTextField(const GfxRenderer& renderer, Rect rect, int textWidth, bool cursorMode = false,
+                     int contentStartX = 0, int contentWidth = 0) const override;
   void drawKeyboardKey(const GfxRenderer& renderer, Rect rect, const char* label, bool isSelected,
                        const char* secondaryLabel = nullptr, KeyboardKeyType keyType = KeyboardKeyType::Normal,
                        bool inactiveSelection = false) const override;

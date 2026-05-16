@@ -87,11 +87,8 @@ const std::vector<SettingInfo>& getDeviceDisplaySettings() {
 
 const std::vector<SettingInfo>& getDeviceReaderSettings() {
   static const std::vector<SettingInfo> settings = {
-      SettingInfo::Section(StrId::STR_FONTS),
       SettingInfo::Action(StrId::STR_FONT_FAMILY, SettingAction::FontSelection),
       SettingInfo::Action(StrId::STR_FONT_MANAGER, SettingAction::FontSelection),
-      SettingInfo::Action(StrId::STR_DOWNLOAD_FONTS, SettingAction::FontDownload),
-      SettingInfo::Action(StrId::STR_INSTALLED_FONTS, SettingAction::InstalledFonts),
       SettingInfo::Enum(
           StrId::STR_FONT_SIZE, &CrossPointSettings::fontSize,
           {StrId::STR_X_SMALL, StrId::STR_SMALL, StrId::STR_MEDIUM, StrId::STR_LARGE, StrId::STR_X_LARGE}),
@@ -341,8 +338,6 @@ std::string getSettingValueText(const SettingInfo& setting) {
   if (setting.type == SettingType::ACTION) {
     switch (setting.action) {
       case SettingAction::FontSelection:
-      case SettingAction::FontDownload:
-      case SettingAction::InstalledFonts:
         return getReaderFontSettingValueText();
       case SettingAction::Network:
         return getNetworkSettingValueText();
@@ -380,6 +375,9 @@ std::string getSettingValueText(const SettingInfo& setting) {
 const char* getSettingNameText(const SettingInfo& setting) { return I18N.get(setting.nameId); }
 
 bool shouldShowDeviceSetting(const SettingInfo& setting) {
+  if (setting.nameId == StrId::STR_FILE_BROWSER_VIEW) {
+    return SETTINGS.uiTheme != CrossPointSettings::ROUNDEDRAFF;
+  }
   if (setting.nameId == StrId::STR_SHOW_CURRENT_BOOK_CARD) {
     return SETTINGS.uiTheme == CrossPointSettings::LYRA_VCODEX2;
   }
@@ -618,10 +616,12 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::FontSelection:
-      case SettingAction::FontDownload:
-      case SettingAction::InstalledFonts:
-        startActivityForResult(std::make_unique<FontSelectionActivity>(renderer, mappedInput, &sdFontSystem.registry()),
-                               resultHandler);
+        startActivityForResult(
+            std::make_unique<FontSelectionActivity>(renderer, mappedInput, &sdFontSystem.registry(),
+                                                    setting.nameId == StrId::STR_FONT_MANAGER
+                                                        ? FontSelectionActivity::Mode::Manage
+                                                        : FontSelectionActivity::Mode::Select),
+            resultHandler);
         break;
       case SettingAction::OPDSBrowser:
         startActivityForResult(std::make_unique<OpdsServerListActivity>(renderer, mappedInput), resultHandler);
