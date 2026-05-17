@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "RecentBooksStore.h"
 #include "ReadingStatsStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -100,18 +101,34 @@ std::string resolveStoredCoverPath(const std::string& coverBmpPath) {
     return "";
   }
 
-  if (coverBmpPath.find("[HEIGHT]") != std::string::npos) {
-    const int candidateHeights[] = {COVER_HEIGHT, 166, 160, 154, 140, 240, 400};
-    for (const int height : candidateHeights) {
-      const std::string resolved = UITheme::getCoverThumbPath(coverBmpPath, height);
-      if (Storage.exists(resolved.c_str())) {
-        return resolved;
-      }
+  const int candidateHeights[] = {COVER_HEIGHT, 166, 164, 160, 154, 140, 240, 400};
+  for (const int height : candidateHeights) {
+    const std::string resolved = UITheme::getCoverThumbPath(coverBmpPath, height);
+    if (Storage.exists(resolved.c_str())) {
+      return resolved;
     }
-    return "";
   }
 
   return Storage.exists(coverBmpPath.c_str()) ? coverBmpPath : "";
+}
+
+std::string findRecentBookCoverPath(const ReadingBookStats& book) {
+  for (const RecentBook& recentBook : RECENT_BOOKS.getBooks()) {
+    const bool samePath = recentBook.path == book.path;
+    const bool sameMetadata = !book.title.empty() && recentBook.title == book.title &&
+                              (book.author.empty() || recentBook.author == book.author);
+    if (!samePath && !sameMetadata) {
+      continue;
+    }
+
+    const std::string resolved = resolveStoredCoverPath(recentBook.coverBmpPath);
+    if (!resolved.empty()) {
+      READING_STATS.updateBookMetadata(book.path, recentBook.title, recentBook.author, recentBook.coverBmpPath);
+      rememberResolvedCoverPath(withCoverPath(book, recentBook.coverBmpPath), resolved);
+      return resolved;
+    }
+  }
+  return "";
 }
 
 std::string ensureCoverPath(const ReadingBookStats& book) {
@@ -126,65 +143,7 @@ std::string ensureCoverPath(const ReadingBookStats& book) {
     return resolved;
   }
 
-  if (!Storage.exists(book.path.c_str())) {
-    return "";
-  }
-
-  if (FsHelpers::hasEpubExtension(book.path)) {
-    Epub epub(book.path, "/.crosspoint");
-    if (!epub.load(true, true)) {
-      return "";
-    }
-    epub.setupCacheDir();
-    const std::string coverPath = epub.getCoverBmpPath();
-    if (!Storage.exists(coverPath.c_str()) && !epub.generateCoverBmp()) {
-      return "";
-    }
-    if (!Storage.exists(coverPath.c_str())) {
-      return "";
-    }
-    READING_STATS.updateBookMetadata(book.path, epub.getTitle(), epub.getAuthor(), coverPath);
-    rememberResolvedCoverPath(withCoverPath(book, coverPath), coverPath);
-    return coverPath;
-  }
-
-  if (FsHelpers::hasXtcExtension(book.path)) {
-    Xtc xtc(book.path, "/.crosspoint");
-    if (!xtc.load()) {
-      return "";
-    }
-    xtc.setupCacheDir();
-    const std::string coverPath = xtc.getCoverBmpPath();
-    if (!Storage.exists(coverPath.c_str()) && !xtc.generateCoverBmp()) {
-      return "";
-    }
-    if (!Storage.exists(coverPath.c_str())) {
-      return "";
-    }
-    READING_STATS.updateBookMetadata(book.path, xtc.getTitle(), xtc.getAuthor(), coverPath);
-    rememberResolvedCoverPath(withCoverPath(book, coverPath), coverPath);
-    return coverPath;
-  }
-
-  if (FsHelpers::hasTxtExtension(book.path) || FsHelpers::hasMarkdownExtension(book.path)) {
-    Txt txt(book.path, "/.crosspoint");
-    if (!txt.load()) {
-      return "";
-    }
-    txt.setupCacheDir();
-    const std::string coverPath = txt.getCoverBmpPath();
-    if (!Storage.exists(coverPath.c_str()) && !txt.generateCoverBmp()) {
-      return "";
-    }
-    if (!Storage.exists(coverPath.c_str())) {
-      return "";
-    }
-    READING_STATS.updateBookMetadata(book.path, txt.getTitle(), "", coverPath);
-    rememberResolvedCoverPath(withCoverPath(book, coverPath), coverPath);
-    return coverPath;
-  }
-
-  return "";
+  return findRecentBookCoverPath(book);
 }
 
 std::string findFastCoverPath(const ReadingBookStats& book) {
@@ -201,6 +160,11 @@ std::string findFastCoverPath(const ReadingBookStats& book) {
 
   if (!Storage.exists(book.path.c_str())) {
     return "";
+  }
+
+  resolved = findRecentBookCoverPath(book);
+  if (!resolved.empty()) {
+    return resolved;
   }
 
   if (FsHelpers::hasEpubExtension(book.path)) {
@@ -343,6 +307,22 @@ void drawProgressBlock(GfxRenderer& renderer, const Rect& rect, const char* labe
 }
 
 void drawCover(GfxRenderer& renderer, const Rect& rect, const std::string& coverPath) {
+  const auto coverFrameForRatio = [](const Rect& bounds, const int sourceW, const int sourceH) {
+    const int safeSourceW = sourceW > 0 ? sourceW : 2;
+    const int safeSourceH = sourceH > 0 ? sourceH : 3;
+    int frameW = std::min(bounds.width - 4, static_cast<int>((static_cast<int64_t>(bounds.height - 4) * safeSourceW) /
+                                                             safeSourceH));
+    int frameH = static_cast<int>((static_cast<int64_t>(frameW) * safeSourceH) / safeSourceW);
+    if (frameH > bounds.height - 4) {
+      frameH = bounds.height - 4;
+      frameW = static_cast<int>((static_cast<int64_t>(frameH) * safeSourceW) / safeSourceH);
+    }
+    frameW = std::max(1, std::min(frameW, bounds.width - 4));
+    frameH = std::max(1, std::min(frameH, bounds.height - 4));
+    return Rect{bounds.x + 2 + std::max(0, (bounds.width - 4 - frameW) / 2),
+                bounds.y + 2 + std::max(0, (bounds.height - 4 - frameH) / 2), frameW, frameH};
+  };
+
   const auto drawFallback = [&renderer, &rect]() {
     const char* label = tr(STR_BOOK);
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
@@ -365,7 +345,8 @@ void drawCover(GfxRenderer& renderer, const Rect& rect, const std::string& cover
 
   Bitmap bitmap(file);
   if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-    renderer.drawBitmap(bitmap, rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+    const Rect frame = coverFrameForRatio(rect, std::max(1, bitmap.getWidth()), std::max(1, bitmap.getHeight()));
+    renderer.drawBitmap(bitmap, frame.x, frame.y, frame.width, frame.height);
   } else {
     drawFallback();
   }
