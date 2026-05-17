@@ -33,7 +33,9 @@ constexpr int METRIC_ROW_HEIGHT = 104;
 constexpr int TOP_CARD_HEIGHT = 212;
 constexpr int SUMMARY_BANNER_HEIGHT = 46;
 constexpr int SUMMARY_BANNER_GAP = 8;
-constexpr int DETAIL_SCROLL_STEP = 128;
+constexpr int DETAIL_SCROLL_STEP = 110;
+constexpr uint32_t SCROLL_REPEAT_START_MS = 260;
+constexpr uint32_t SCROLL_REPEAT_INTERVAL_MS = 130;
 constexpr size_t MAX_RESOLVED_COVERS = 16;
 constexpr int COVER_ANALYSIS_MAX_SAMPLES = 1200;
 
@@ -465,6 +467,8 @@ void ReadingStatsDetailActivity::onEnter() {
   coverLoadPending = false;
   scrollOffset = 0;
   maxScrollOffset = 0;
+  lastScrollActionMs = 0;
+  scrollDirection = 0;
   waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   waitForBackRelease = false;
   if (const auto* book = findBook(bookPath)) {
@@ -555,30 +559,38 @@ void ReadingStatsDetailActivity::loop() {
 
   const auto scrollBy = [&](const int delta) {
     const int nextOffset = std::clamp(scrollOffset + delta, 0, maxScrollOffset);
-    if (nextOffset == scrollOffset) {
-      return false;
+    if (nextOffset != scrollOffset) {
+      scrollOffset = nextOffset;
+      invalidateBaseScreenBuffer();
+      requestUpdate();
     }
-    scrollOffset = nextOffset;
-    invalidateBaseScreenBuffer();
-    requestUpdate();
-    return true;
   };
 
-  buttonNavigator.onNextPress([&]() {
-    if (maxScrollOffset > 0) {
-      if (scrollOffset < maxScrollOffset && scrollBy(DETAIL_SCROLL_STEP)) {
-        return;
-      }
-      return;
+  int requestedDirection = 0;
+  if (mappedInput.isPressed(MappedInputManager::Button::Up) || mappedInput.isPressed(MappedInputManager::Button::Left)) {
+    requestedDirection = -1;
+  } else if (mappedInput.isPressed(MappedInputManager::Button::Down) ||
+             mappedInput.isPressed(MappedInputManager::Button::Right)) {
+    requestedDirection = 1;
+  }
+
+  if (requestedDirection != 0 && maxScrollOffset > 0) {
+    const bool directionChanged = requestedDirection != scrollDirection;
+    const bool wasPressedNow =
+        (requestedDirection < 0 && (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
+                                    mappedInput.wasPressed(MappedInputManager::Button::Left))) ||
+        (requestedDirection > 0 && (mappedInput.wasPressed(MappedInputManager::Button::Down) ||
+                                    mappedInput.wasPressed(MappedInputManager::Button::Right)));
+    const bool canRepeat = mappedInput.getHeldTime() >= SCROLL_REPEAT_START_MS &&
+                           (lastScrollActionMs == 0 || millis() - lastScrollActionMs >= SCROLL_REPEAT_INTERVAL_MS);
+    if (directionChanged || wasPressedNow || canRepeat) {
+      scrollBy(requestedDirection * DETAIL_SCROLL_STEP);
+      lastScrollActionMs = millis();
     }
-  });
-  buttonNavigator.onPreviousPress([&]() {
-    if (maxScrollOffset > 0) {
-      if (scrollOffset > 0 && scrollBy(-DETAIL_SCROLL_STEP)) {
-        return;
-      }
-    }
-  });
+  } else {
+    lastScrollActionMs = 0;
+  }
+  scrollDirection = requestedDirection;
 
   if (coverLoadPending) {
     coverLoadPending = false;

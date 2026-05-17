@@ -25,6 +25,8 @@ class ReadingStatsDetailActivity final : public Activity {
   int baseScreenScrollOffset = -1;
   int scrollOffset = 0;
   int maxScrollOffset = 0;
+  uint32_t lastScrollActionMs = 0;
+  int scrollDirection = 0;
 
   bool storeBaseScreenBuffer();
   bool restoreBaseScreenBuffer();

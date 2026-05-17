@@ -1,0 +1,20 @@
+CPR-vCodex 1.7.0 establishes a more stable reader-focused baseline for the Xteink X4.
+
+This release focuses on:
+- improved Reading Stats and Reading Profile layouts
+- cleaner Home and Library behavior
+- redesigned Reader Quick Settings
+- CrossPoint-style custom font management
+- LyraVcodex2 UI polish
+- faster Browse Files behavior using lightweight placeholders
+- improved book-specific Reading Stats cover rendering
+- cleaner status bar and reader customization behavior
+
+The firmware direction now prioritizes:
+- reading UX
+- reading analytics
+- lightweight performance
+- cleaner e-ink layouts
+- practical customization without sacrificing responsiveness
+
+This release also removes several slower experimental Browse Files cover behaviors in favor of a faster and more stable library experience.

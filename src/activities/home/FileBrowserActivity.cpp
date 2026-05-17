@@ -110,11 +110,15 @@ void drawBookPlaceholder(GfxRenderer& renderer, const Rect& rect, const bool ima
   const int bookH = std::min(rect.height - 10, std::max(34, rect.height - 12));
   const int bookX = rect.x + (rect.width - bookW) / 2;
   const int bookY = rect.y + (rect.height - bookH) / 2;
-  renderer.drawRoundedRect(bookX, bookY, bookW, bookH, 1, 4, true);
-  renderer.drawLine(bookX + 6, bookY + 2, bookX + 6, bookY + bookH - 3, true);
-  renderer.drawLine(bookX + 12, bookY + 10, bookX + bookW - 8, bookY + 10, true);
-  renderer.drawLine(bookX + 12, bookY + 18, bookX + bookW - 10, bookY + 18, true);
-  renderer.drawLine(bookX + 12, bookY + bookH - 10, bookX + bookW - 12, bookY + bookH - 10, true);
+  renderer.fillRect(bookX + 3, bookY + 2, std::max(1, bookW - 6), 2, true);
+  renderer.drawRoundedRect(bookX, bookY, bookW, bookH, 2, 4, true);
+  renderer.drawLine(bookX + 7, bookY + 3, bookX + 7, bookY + bookH - 4, true);
+  renderer.drawLine(bookX + 10, bookY + 4, bookX + 10, bookY + bookH - 5, true);
+  renderer.drawLine(bookX + 14, bookY + 11, bookX + bookW - 8, bookY + 11, 2, true);
+  renderer.drawLine(bookX + 14, bookY + 20, bookX + bookW - 11, bookY + 20, true);
+  renderer.drawLine(bookX + 14, bookY + 28, bookX + bookW - 14, bookY + 28, true);
+  renderer.drawLine(bookX + bookW - 5, bookY + 6, bookX + bookW - 5, bookY + bookH - 7, true);
+  renderer.drawLine(bookX + 12, bookY + bookH - 9, bookX + bookW - 11, bookY + bookH - 9, true);
 }
 
 class BookActionsActivity final : public Activity {
@@ -326,14 +330,33 @@ void FileBrowserActivity::loadFilesystemFiles() {
   root.close();
   sortFileList(files);
 
-  completedFileStates.reserve(files.size());
-  progressFileStates.reserve(files.size());
-  libraryFileStates.reserve(files.size());
-  folderItemCounts.reserve(files.size());
   std::string fullPathPrefix = basepath;
   if (fullPathPrefix.empty() || fullPathPrefix.back() != '/') {
     fullPathPrefix += "/";
   }
+
+  std::vector<std::string> visibleFiles;
+  visibleFiles.reserve(files.size());
+  for (const auto& entry : files) {
+    if (entry.empty() || entry.back() == '/') {
+      visibleFiles.push_back(entry);
+      continue;
+    }
+
+    const std::string fullPath = fullPathPrefix + entry;
+    const auto* statsBook = READING_STATS.findBook(fullPath);
+    const auto* metadata = LIBRARY_METADATA.findBook(fullPath);
+    if ((metadata != nullptr && metadata->finished) || (statsBook != nullptr && statsBook->completed)) {
+      continue;
+    }
+    visibleFiles.push_back(entry);
+  }
+  files = std::move(visibleFiles);
+
+  completedFileStates.reserve(files.size());
+  progressFileStates.reserve(files.size());
+  libraryFileStates.reserve(files.size());
+  folderItemCounts.reserve(files.size());
 
   for (const auto& entry : files) {
     if (entry.empty() || entry.back() == '/') {
@@ -793,7 +816,6 @@ bool FileBrowserActivity::isBookshelfMode() const {
 }
 
 int FileBrowserActivity::getBookshelfColumns() const {
-  if (!isLibraryDashboard() && !isLibraryShelf()) return 3;
   return SETTINGS.bookshelfColumns == CrossPointSettings::BOOKSHELF_COLUMNS_2 ? 2 : 3;
 }
 
@@ -801,7 +823,7 @@ int FileBrowserActivity::getBookshelfCardHeight() const {
   if (isLibraryDashboard()) return 146;
   if (isLibraryShelf()) return getBookshelfColumns() == 2 ? 238 : 204;
   if (basepath != "/") return 184;
-  return 146;
+  return getBookshelfColumns() == 2 ? 170 : 146;
 }
 
 int FileBrowserActivity::getPageItems(const int contentHeight) const {
