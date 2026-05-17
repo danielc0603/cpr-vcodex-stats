@@ -35,11 +35,28 @@ constexpr int SUMMARY_BANNER_HEIGHT = 46;
 constexpr int SUMMARY_BANNER_GAP = 8;
 constexpr int DETAIL_SCROLL_STEP = 128;
 constexpr size_t MAX_RESOLVED_COVERS = 16;
+constexpr int COVER_ANALYSIS_MAX_SAMPLES = 1200;
 
 struct ResolvedCoverCacheEntry {
   std::string bookPath;
   std::string coverBmpPath;
   std::string resolvedPath;
+};
+
+struct CoverToneAnalysis {
+  int dark = 0;
+  int mid = 0;
+  int light = 0;
+  int samples = 0;
+
+  bool shouldInvert() const {
+    if (samples < 32) {
+      return false;
+    }
+
+    const int darkish = dark + mid;
+    return darkish * 100 / samples >= 78 && light * 100 / samples <= 18;
+  }
 };
 
 std::vector<ResolvedCoverCacheEntry>& getResolvedCoverCache() {
@@ -306,6 +323,88 @@ void drawProgressBlock(GfxRenderer& renderer, const Rect& rect, const char* labe
   }
 }
 
+CoverToneAnalysis analyzeCoverTone(const Bitmap& bitmap) {
+  CoverToneAnalysis analysis;
+  const int outputRowSize = (bitmap.getWidth() + 3) / 4;
+  auto* outputRow = static_cast<uint8_t*>(malloc(outputRowSize));
+  auto* rowBytes = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+
+  if (!outputRow || !rowBytes || bitmap.rewindToData() != BmpReaderError::Ok) {
+    free(outputRow);
+    free(rowBytes);
+    return analysis;
+  }
+
+  const int targetRowSamples = std::max(1, COVER_ANALYSIS_MAX_SAMPLES / std::max(1, bitmap.getHeight()));
+  const int xStep = std::max(1, bitmap.getWidth() / targetRowSamples);
+  for (int y = 0; y < bitmap.getHeight(); ++y) {
+    if (bitmap.readNextRow(outputRow, rowBytes) != BmpReaderError::Ok) {
+      break;
+    }
+    for (int x = 0; x < bitmap.getWidth(); x += xStep) {
+      const uint8_t val = (outputRow[x / 4] >> (6 - ((x * 2) % 8))) & 0x03;
+      if (val == 0) {
+        ++analysis.dark;
+      } else if (val == 3) {
+        ++analysis.light;
+      } else {
+        ++analysis.mid;
+      }
+      ++analysis.samples;
+    }
+  }
+
+  bitmap.rewindToData();
+  free(outputRow);
+  free(rowBytes);
+  return analysis;
+}
+
+void drawInvertedBitmapCover(GfxRenderer& renderer, const Bitmap& bitmap, const Rect& frame) {
+  const int outputRowSize = (bitmap.getWidth() + 3) / 4;
+  auto* outputRow = static_cast<uint8_t*>(malloc(outputRowSize));
+  auto* rowBytes = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+
+  if (!outputRow || !rowBytes || bitmap.rewindToData() != BmpReaderError::Ok) {
+    free(outputRow);
+    free(rowBytes);
+    return;
+  }
+
+  const float scaleX = static_cast<float>(frame.width) / static_cast<float>(std::max(1, bitmap.getWidth()));
+  const float scaleY = static_cast<float>(frame.height) / static_cast<float>(std::max(1, bitmap.getHeight()));
+  for (int bmpY = 0; bmpY < bitmap.getHeight(); ++bmpY) {
+    if (bitmap.readNextRow(outputRow, rowBytes) != BmpReaderError::Ok) {
+      break;
+    }
+
+    const int sourceY = bitmap.isTopDown() ? bmpY : bitmap.getHeight() - 1 - bmpY;
+    const int screenY = frame.y + static_cast<int>(sourceY * scaleY);
+    if (screenY < frame.y || screenY >= frame.y + frame.height) {
+      continue;
+    }
+
+    for (int bmpX = 0; bmpX < bitmap.getWidth(); ++bmpX) {
+      const int screenX = frame.x + static_cast<int>(bmpX * scaleX);
+      if (screenX < frame.x || screenX >= frame.x + frame.width) {
+        continue;
+      }
+
+      const uint8_t sourceVal = (outputRow[bmpX / 4] >> (6 - ((bmpX * 2) % 8))) & 0x03;
+      const uint8_t val = 3 - sourceVal;
+      const bool drawBlack = val == 0 || (val == 1 && ((screenX + screenY) & 1) == 0) ||
+                             (val == 2 && (screenX & 1) == 0 && (screenY & 1) == 0);
+      if (drawBlack) {
+        renderer.drawPixel(screenX, screenY, true);
+      }
+    }
+  }
+
+  bitmap.rewindToData();
+  free(outputRow);
+  free(rowBytes);
+}
+
 void drawCover(GfxRenderer& renderer, const Rect& rect, const std::string& coverPath) {
   const auto coverFrameForRatio = [](const Rect& bounds, const int sourceW, const int sourceH) {
     const int safeSourceW = sourceW > 0 ? sourceW : 2;
@@ -346,7 +445,12 @@ void drawCover(GfxRenderer& renderer, const Rect& rect, const std::string& cover
   Bitmap bitmap(file);
   if (bitmap.parseHeaders() == BmpReaderError::Ok) {
     const Rect frame = coverFrameForRatio(rect, std::max(1, bitmap.getWidth()), std::max(1, bitmap.getHeight()));
-    renderer.drawBitmap(bitmap, frame.x, frame.y, frame.width, frame.height);
+    const CoverToneAnalysis analysis = analyzeCoverTone(bitmap);
+    if (analysis.shouldInvert()) {
+      drawInvertedBitmapCover(renderer, bitmap, frame);
+    } else {
+      renderer.drawBitmap(bitmap, frame.x, frame.y, frame.width, frame.height);
+    }
   } else {
     drawFallback();
   }

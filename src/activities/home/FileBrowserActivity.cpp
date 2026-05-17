@@ -1,5 +1,6 @@
 #include "FileBrowserActivity.h"
 
+#include <Bitmap.h>
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -90,6 +91,93 @@ std::string fileTypeLabel(const std::string& filename) {
 Rect insetRect(const Rect& rect, const int inset) {
   return Rect{rect.x + inset, rect.y + inset, std::max(0, rect.width - inset * 2),
               std::max(0, rect.height - inset * 2)};
+}
+
+Rect coverFrameForRatio(const Rect& bounds, const int sourceW, const int sourceH) {
+  const int safeSourceW = sourceW > 0 ? sourceW : BOOK_COVER_RATIO_W;
+  const int safeSourceH = sourceH > 0 ? sourceH : BOOK_COVER_RATIO_H;
+  int frameW = std::min(bounds.width, static_cast<int>((static_cast<int64_t>(bounds.height) * safeSourceW) / safeSourceH));
+  int frameH = static_cast<int>((static_cast<int64_t>(frameW) * safeSourceH) / safeSourceW);
+  if (frameH > bounds.height) {
+    frameH = bounds.height;
+    frameW = static_cast<int>((static_cast<int64_t>(frameH) * safeSourceW) / safeSourceH);
+  }
+  frameW = std::max(1, std::min(frameW, bounds.width));
+  frameH = std::max(1, std::min(frameH, bounds.height));
+  return Rect{bounds.x + std::max(0, (bounds.width - frameW) / 2),
+              bounds.y + std::max(0, (bounds.height - frameH) / 2), frameW, frameH};
+}
+
+std::string resolveCachedCoverPath(const std::string& coverPath, const int preferredHeight) {
+  if (coverPath.empty()) return "";
+
+  const int candidateHeights[] = {preferredHeight, 220, 204, 198, 188, 174, 170, 164, 160, 154, 140, 132, 240, 400};
+  for (const int height : candidateHeights) {
+    if (height <= 0) continue;
+    const std::string resolved = UITheme::getCoverThumbPath(coverPath, height);
+    if (Storage.exists(resolved.c_str())) {
+      return resolved;
+    }
+  }
+
+  return Storage.exists(coverPath.c_str()) ? coverPath : "";
+}
+
+bool hasCachedCover(const std::string& coverPath) { return !resolveCachedCoverPath(coverPath, 0).empty(); }
+
+std::string findCachedCoverForBook(const std::string& path) {
+  if (const auto* statsBook = READING_STATS.findBook(path)) {
+    if (hasCachedCover(statsBook->coverBmpPath)) return statsBook->coverBmpPath;
+  }
+
+  for (const RecentBook& recentBook : RECENT_BOOKS.getBooks()) {
+    if (recentBook.path == path && hasCachedCover(recentBook.coverBmpPath)) {
+      return recentBook.coverBmpPath;
+    }
+  }
+  return "";
+}
+
+std::string findCachedCoverForFolder(const std::string& folderPath) {
+  std::string prefix = folderPath;
+  if (prefix.empty() || prefix.back() != '/') prefix += "/";
+
+  for (const auto& book : READING_STATS.getBooks()) {
+    if (book.path.rfind(prefix, 0) == 0 && hasCachedCover(book.coverBmpPath)) {
+      return book.coverBmpPath;
+    }
+  }
+
+  for (const RecentBook& recentBook : RECENT_BOOKS.getBooks()) {
+    if (recentBook.path.rfind(prefix, 0) == 0 && hasCachedCover(recentBook.coverBmpPath)) {
+      return recentBook.coverBmpPath;
+    }
+  }
+  return "";
+}
+
+bool drawCachedCover(GfxRenderer& renderer, const Rect& bounds, const std::string& coverPath, const uint8_t* fallbackIcon) {
+  const std::string resolved = resolveCachedCoverPath(coverPath, bounds.height);
+  Rect frame = coverFrameForRatio(bounds, 0, 0);
+  if (!resolved.empty()) {
+    FsFile file;
+    if (Storage.openFileForRead("FBC", resolved, file)) {
+      Bitmap bitmap(file);
+      if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+        frame = coverFrameForRatio(bounds, std::max(1, bitmap.getWidth()), std::max(1, bitmap.getHeight()));
+        renderer.drawBitmap(bitmap, frame.x, frame.y, frame.width, frame.height);
+        renderer.drawRoundedRect(frame.x, frame.y, frame.width, frame.height, 1, 5, true);
+        file.close();
+        return true;
+      }
+      file.close();
+    }
+  }
+
+  renderer.drawRoundedRect(frame.x, frame.y, frame.width, frame.height, 1, 5, true);
+  renderer.drawIcon(fallbackIcon != nullptr ? fallbackIcon : BookIcon, frame.x + (frame.width - 24) / 2,
+                    frame.y + std::max(8, (frame.height - 24) / 2), 24, 24);
+  return false;
 }
 
 void drawContainedCard(GfxRenderer& renderer, const Rect& card, const bool selected, const int radius = 6) {
@@ -258,6 +346,7 @@ void FileBrowserActivity::loadFiles() {
   entryPaths.clear();
   entryTitles.clear();
   entrySubtitles.clear();
+  entryCoverPaths.clear();
 
   if (isBookshelfMode() && basepath == "/" && libraryView == 0) {
     libraryView = LIBRARY_VIEW_DASHBOARD;
@@ -313,6 +402,7 @@ void FileBrowserActivity::loadFilesystemFiles() {
   progressFileStates.reserve(files.size());
   libraryFileStates.reserve(files.size());
   folderItemCounts.reserve(files.size());
+  entryCoverPaths.reserve(files.size());
   std::string fullPathPrefix = basepath;
   if (fullPathPrefix.empty() || fullPathPrefix.back() != '/') {
     fullPathPrefix += "/";
@@ -327,6 +417,7 @@ void FileBrowserActivity::loadFilesystemFiles() {
       entryPaths.push_back(fullPathPrefix + entry);
       entryTitles.push_back(getFileName(entry));
       entrySubtitles.emplace_back();
+      entryCoverPaths.push_back(findCachedCoverForFolder(fullPathPrefix + entry));
       continue;
     }
 
@@ -357,6 +448,7 @@ void FileBrowserActivity::loadFilesystemFiles() {
     entryPaths.push_back(fullPath);
     entryTitles.push_back(getFileName(entry));
     entrySubtitles.emplace_back();
+    entryCoverPaths.push_back(findCachedCoverForBook(fullPath));
   }
 }
 
@@ -397,6 +489,7 @@ void FileBrowserActivity::loadLibraryDashboard() {
     entryPaths.emplace_back();
     entryTitles.emplace_back(shelf.title);
     entrySubtitles.emplace_back(shelf.subtitle);
+    entryCoverPaths.emplace_back();
   }
 }
 
@@ -417,6 +510,7 @@ void FileBrowserActivity::addLibraryBook(const std::string& path, const std::str
   progressFileStates.push_back(progress);
   libraryFileStates.push_back(state);
   folderItemCounts.push_back(0);
+  entryCoverPaths.push_back(coverPath.empty() ? findCachedCoverForBook(path) : coverPath);
 }
 
 void FileBrowserActivity::loadLibraryShelf(const uint8_t shelf) {
@@ -780,10 +874,10 @@ int FileBrowserActivity::getBookshelfColumns() const {
 }
 
 int FileBrowserActivity::getBookshelfCardHeight() const {
-  if (isLibraryDashboard()) return 132;
+  if (isLibraryDashboard()) return 146;
   const bool insideFolder = basepath != "/";
-  if (isLibraryShelf()) return getBookshelfColumns() == 2 ? 220 : 188;
-  return getBookshelfColumns() == 2 ? (insideFolder ? 204 : 170) : (insideFolder ? 174 : 146);
+  if (isLibraryShelf()) return getBookshelfColumns() == 2 ? 238 : 204;
+  return getBookshelfColumns() == 2 ? (insideFolder ? 224 : 210) : (insideFolder ? 204 : 198);
 }
 
 int FileBrowserActivity::getPageItems(const int contentHeight) const {
@@ -795,7 +889,7 @@ int FileBrowserActivity::getPageItems(const int contentHeight) const {
     }
     const int rowStride = getBookshelfCardHeight() + BOOKSHELF_CARD_GAP;
     const int rows = std::max(1, (contentHeight + BOOKSHELF_CARD_GAP) / rowStride);
-    return rows * getBookshelfColumns();
+    return std::min(6, rows * getBookshelfColumns());
   }
   const int reserved = renderer.getLineHeight(SMALL_FONT_ID) + UITheme::getInstance().getMetrics().verticalSpacing;
   return UITheme::getNumberOfItemsPerPage(renderer, true, false, true, false, reserved);
@@ -933,6 +1027,8 @@ void FileBrowserActivity::renderBookshelf(const Rect& rect, const int pageItems)
     const std::string& entry = files[index];
     const bool isFolder = !entry.empty() && entry.back() == '/';
     const uint8_t* icon = fileIconBitmap(entry);
+    const std::string coverPath =
+        index >= 0 && index < static_cast<int>(entryCoverPaths.size()) ? entryCoverPaths[index] : "";
     const Rect inner = insetRect(card, CARD_PAD);
     const int textX = inner.x;
     const int textWidth = inner.width;
@@ -941,14 +1037,21 @@ void FileBrowserActivity::renderBookshelf(const Rect& rect, const int pageItems)
 
     std::string meta;
     if (isFolder) {
-      const int iconX = inner.x;
-      const int iconY = inner.y;
-      renderer.drawIcon(icon, iconX, iconY, BOOKSHELF_FOLDER_ICON_SIZE, BOOKSHELF_FOLDER_ICON_SIZE);
+      const int visualHeight =
+          coverPath.empty() ? BOOKSHELF_FOLDER_ICON_SIZE : std::max(42, std::min(78, statusStripTop - inner.y - 72));
+      const int visualWidth = coverPath.empty() ? BOOKSHELF_FOLDER_ICON_SIZE : std::min(inner.width, visualHeight * BOOK_COVER_RATIO_W / BOOK_COVER_RATIO_H);
+      const int visualX = coverPath.empty() ? inner.x : card.x + (card.width - visualWidth) / 2;
+      const int visualY = inner.y;
+      if (coverPath.empty()) {
+        renderer.drawIcon(icon, visualX, visualY, BOOKSHELF_FOLDER_ICON_SIZE, BOOKSHELF_FOLDER_ICON_SIZE);
+      } else {
+        drawCachedCover(renderer, Rect{visualX, visualY, visualWidth, visualHeight}, coverPath, FolderIcon);
+      }
       const uint16_t folderItems =
           (index >= 0 && index < static_cast<int>(folderItemCounts.size())) ? folderItemCounts[index] : 0;
       meta = std::to_string(folderItems) + " " + I18N.get(folderItems == 1 ? StrId::STR_ITEM : StrId::STR_ITEMS);
 
-      const int titleTop = iconY + BOOKSHELF_FOLDER_ICON_SIZE + 10;
+      const int titleTop = visualY + visualHeight + 10;
       const int titleBottom = statusStripTop - 6;
       const auto titleLines = renderer.wrappedText(UI_10_FONT_ID, getEntryTitle(index).c_str(), textWidth, 4);
       int lineY = titleTop;
@@ -970,11 +1073,8 @@ void FileBrowserActivity::renderBookshelf(const Rect& rect, const int pageItems)
       const int coverWidth = std::max(40, std::min(inner.width, coverHeight * BOOK_COVER_RATIO_W / BOOK_COVER_RATIO_H));
       const int coverX = card.x + (card.width - coverWidth) / 2;
       const int coverY = inner.y;
-      renderer.drawRoundedRect(coverX, coverY, coverWidth, coverHeight, 1, 5, true);
-      renderer.drawIcon(icon == Image24Icon ? Image24Icon : BookIcon, coverX + (coverWidth - 24) / 2,
-                        coverY + std::max(8, (coverHeight - 24) / 2), 24, 24);
-      renderer.drawLine(coverX + 5, coverY + coverHeight - 12, coverX + coverWidth - 6, coverY + coverHeight - 12,
-                        true);
+      drawCachedCover(renderer, Rect{coverX, coverY, coverWidth, coverHeight}, coverPath,
+                      icon == Image24Icon ? Image24Icon : BookIcon);
 
       const auto titleLines = renderer.wrappedText(SMALL_FONT_ID, getEntryTitle(index).c_str(), textWidth, 2);
       int lineY = coverY + coverHeight + 8;
