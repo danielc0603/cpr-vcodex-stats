@@ -12,12 +12,19 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
+#include <algorithm>
+
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "AchievementsStore.h"
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "EpubReaderPercentSelectionActivity.h"
+#include "ReaderBookInfoActivity.h"
+#include "ReaderJumpMenuActivity.h"
+#include "ReaderNavigationMenuActivity.h"
+#include "ReaderRecentBooksActivity.h"
 #include "ReaderUtils.h"
 #include "XtcReaderChapterSelectionActivity.h"
 #include "activities/apps/ReadingStatsDetailActivity.h"
@@ -72,6 +79,8 @@ uint8_t getChapterProgressForStats(Xtc& xtc, const uint32_t currentPage) {
   const uint32_t pageOffset = static_cast<uint32_t>(currentPage - chapter->startPage + 1);
   return static_cast<uint8_t>(std::min<uint32_t>(100, (pageOffset * 100 + chapterLength / 2) / chapterLength));
 }
+
+int clampReaderPercent(const int percent) { return std::max(0, std::min(100, percent)); }
 
 void markStatsCompletedAtEnd(Xtc& xtc) {
   if (xtc.getPageCount() == 0) {
@@ -135,6 +144,113 @@ void XtcReaderActivity::onExit() {
   xtc.reset();
 }
 
+void XtcReaderActivity::openReaderNavigationMenu() {
+  READING_STATS.noteActivity();
+  const std::string title = xtc ? xtc->getTitle() : std::string(tr(STR_JUMP_MENU));
+  startActivityForResult(std::make_unique<ReaderNavigationMenuActivity>(renderer, mappedInput, title),
+                         [this](const ActivityResult& result) {
+                           READING_STATS.resumeSession();
+                           backLongPressHandled = false;
+                           if (!result.isCancelled) {
+                             handleReaderNavigationAction(std::get<MenuResult>(result.data).action);
+                           } else {
+                             requestUpdate();
+                           }
+                         });
+}
+
+void XtcReaderActivity::openJumpMenu() {
+  READING_STATS.noteActivity();
+  startActivityForResult(std::make_unique<ReaderJumpMenuActivity>(
+                             renderer, mappedInput, tr(STR_JUMP_MENU),
+                             xtc && xtc->hasChapters() && !xtc->getChapters().empty(), false),
+                         [this](const ActivityResult& result) {
+                           READING_STATS.resumeSession();
+                           if (!result.isCancelled) {
+                             handleJumpMenuAction(std::get<MenuResult>(result.data).action);
+                           } else {
+                             requestUpdate();
+                           }
+                         });
+}
+
+void XtcReaderActivity::openRecentBooksSwitcher() {
+  READING_STATS.noteActivity();
+  startActivityForResult(std::make_unique<ReaderRecentBooksActivity>(renderer, mappedInput, xtc ? xtc->getPath() : ""),
+                         [this](const ActivityResult& result) {
+                           if (!result.isCancelled) {
+                             const std::string path = std::get<KeyboardResult>(result.data).text;
+                             if (!path.empty()) {
+                               activityManager.goToReader(path);
+                               return;
+                             }
+                           }
+                           READING_STATS.resumeSession();
+                           openReaderNavigationMenu();
+                         });
+}
+
+void XtcReaderActivity::openBookInfoPlaceholder() {
+  READING_STATS.noteActivity();
+  const std::string title = xtc ? xtc->getTitle() : std::string(tr(STR_BOOK_INFO));
+  startActivityForResult(std::make_unique<ReaderBookInfoActivity>(renderer, mappedInput, title),
+                         [this](const ActivityResult&) {
+                           READING_STATS.resumeSession();
+                           openReaderNavigationMenu();
+                         });
+}
+
+void XtcReaderActivity::handleReaderNavigationAction(const int action) {
+  switch (static_cast<ReaderNavigationMenuActivity::Action>(action)) {
+    case ReaderNavigationMenuActivity::Action::OPEN_RECENT_BOOKS:
+      openRecentBooksSwitcher();
+      break;
+    case ReaderNavigationMenuActivity::Action::BOOK_INFO:
+      openBookInfoPlaceholder();
+      break;
+  }
+}
+
+void XtcReaderActivity::handleJumpMenuAction(const int action) {
+  switch (static_cast<ReaderJumpMenuActivity::Action>(action)) {
+    case ReaderJumpMenuActivity::Action::CHAPTERS:
+      if (xtc && xtc->hasChapters() && !xtc->getChapters().empty()) {
+        startActivityForResult(
+            std::make_unique<XtcReaderChapterSelectionActivity>(renderer, mappedInput, xtc, currentPage),
+            [this](const ActivityResult& result) {
+              READING_STATS.resumeSession();
+              if (!result.isCancelled) {
+                currentPage = std::get<PageResult>(result.data).page;
+                requestUpdate();
+              }
+            });
+      }
+      break;
+    case ReaderJumpMenuActivity::Action::PERCENT: {
+      const int pageCount = xtc ? static_cast<int>(xtc->getPageCount()) : 0;
+      const int initialPercent =
+          pageCount > 1 ? clampReaderPercent((static_cast<int>(currentPage) * 100) / (pageCount - 1)) : 0;
+      startActivityForResult(std::make_unique<EpubReaderPercentSelectionActivity>(renderer, mappedInput, initialPercent),
+                             [this](const ActivityResult& result) {
+                               READING_STATS.resumeSession();
+                               const int pageCount = xtc ? static_cast<int>(xtc->getPageCount()) : 0;
+                               if (!result.isCancelled && pageCount > 0) {
+                                 const int percent = clampReaderPercent(std::get<PercentResult>(result.data).percent);
+                                 currentPage = static_cast<uint32_t>(
+                                     std::min(pageCount - 1, (percent * std::max(0, pageCount - 1) + 50) / 100));
+                                 requestUpdate();
+                               }
+                             });
+      break;
+    }
+    case ReaderJumpMenuActivity::Action::BOOKMARKS:
+    case ReaderJumpMenuActivity::Action::BACK_TO_READING:
+      READING_STATS.resumeSession();
+      requestUpdate();
+      break;
+  }
+}
+
 void XtcReaderActivity::loop() {
   READING_STATS.tickActiveSession();
   if (!xtc) {
@@ -172,12 +288,18 @@ void XtcReaderActivity::loop() {
     }
   }
 
-  // Long press BACK (1s+) goes to file selection
-  if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= goHomeMs) {
-    READING_STATS.endSession();
-    ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
-    showPendingAchievementPopups(renderer);
-    activityManager.goToFileBrowser(xtc ? xtc->getPath() : "");
+  // Long press BACK opens the reader navigation menu.
+  if (mappedInput.isPressed(MappedInputManager::Button::Back) && !backLongPressHandled &&
+      mappedInput.getHeldTime() >= goHomeMs) {
+    backLongPressHandled = true;
+    waitingForConfirmSecondClick = false;
+    firstConfirmClickMs = 0UL;
+    openReaderNavigationMenu();
+    return;
+  }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backLongPressHandled) {
+    backLongPressHandled = false;
     return;
   }
 

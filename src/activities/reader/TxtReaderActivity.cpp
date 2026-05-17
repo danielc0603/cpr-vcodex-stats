@@ -16,6 +16,11 @@
 #include "AchievementsStore.h"
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
+#include "EpubReaderPercentSelectionActivity.h"
+#include "ReaderBookInfoActivity.h"
+#include "ReaderJumpMenuActivity.h"
+#include "ReaderNavigationMenuActivity.h"
+#include "ReaderRecentBooksActivity.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontGlobals.h"
@@ -55,6 +60,8 @@ void exitReaderToHomeOrStats(GfxRenderer& renderer, MappedInputManager& mappedIn
     activityManager.goHome();
   }
 }
+
+int clampReaderPercent(const int percent) { return std::max(0, std::min(100, percent)); }
 
 bool startsWithAt(const std::string& text, const size_t pos, const char* marker) {
   const size_t markerLen = strlen(marker);
@@ -326,6 +333,97 @@ void TxtReaderActivity::onExit() {
   txt.reset();
 }
 
+void TxtReaderActivity::openReaderNavigationMenu() {
+  READING_STATS.noteActivity();
+  const std::string title = txt ? txt->getTitle() : std::string(tr(STR_JUMP_MENU));
+  startActivityForResult(std::make_unique<ReaderNavigationMenuActivity>(renderer, mappedInput, title),
+                         [this](const ActivityResult& result) {
+                           READING_STATS.resumeSession();
+                           backLongPressHandled = false;
+                           if (!result.isCancelled) {
+                             handleReaderNavigationAction(std::get<MenuResult>(result.data).action);
+                           } else {
+                             requestUpdate();
+                           }
+                         });
+}
+
+void TxtReaderActivity::openJumpMenu() {
+  READING_STATS.noteActivity();
+  startActivityForResult(std::make_unique<ReaderJumpMenuActivity>(renderer, mappedInput, tr(STR_JUMP_MENU), false, false),
+                         [this](const ActivityResult& result) {
+                           READING_STATS.resumeSession();
+                           if (!result.isCancelled) {
+                             handleJumpMenuAction(std::get<MenuResult>(result.data).action);
+                           } else {
+                             requestUpdate();
+                           }
+                         });
+}
+
+void TxtReaderActivity::openRecentBooksSwitcher() {
+  READING_STATS.noteActivity();
+  startActivityForResult(std::make_unique<ReaderRecentBooksActivity>(renderer, mappedInput, txt ? txt->getPath() : ""),
+                         [this](const ActivityResult& result) {
+                           if (!result.isCancelled) {
+                             const std::string path = std::get<KeyboardResult>(result.data).text;
+                             if (!path.empty()) {
+                               activityManager.goToReader(path);
+                               return;
+                             }
+                           }
+                           READING_STATS.resumeSession();
+                           openReaderNavigationMenu();
+                         });
+}
+
+void TxtReaderActivity::openBookInfoPlaceholder() {
+  READING_STATS.noteActivity();
+  const std::string title = txt ? txt->getTitle() : std::string(tr(STR_BOOK_INFO));
+  startActivityForResult(std::make_unique<ReaderBookInfoActivity>(renderer, mappedInput, title),
+                         [this](const ActivityResult&) {
+                           READING_STATS.resumeSession();
+                           openReaderNavigationMenu();
+                         });
+}
+
+void TxtReaderActivity::handleReaderNavigationAction(const int action) {
+  switch (static_cast<ReaderNavigationMenuActivity::Action>(action)) {
+    case ReaderNavigationMenuActivity::Action::OPEN_RECENT_BOOKS:
+      openRecentBooksSwitcher();
+      break;
+    case ReaderNavigationMenuActivity::Action::BOOK_INFO:
+      openBookInfoPlaceholder();
+      break;
+  }
+}
+
+void TxtReaderActivity::handleJumpMenuAction(const int action) {
+  switch (static_cast<ReaderJumpMenuActivity::Action>(action)) {
+    case ReaderJumpMenuActivity::Action::PERCENT: {
+      const int initialPercent = totalPages > 1 ? clampReaderPercent((currentPage * 100) / (totalPages - 1)) : 0;
+      startActivityForResult(std::make_unique<EpubReaderPercentSelectionActivity>(renderer, mappedInput, initialPercent),
+                             [this](const ActivityResult& result) {
+                               READING_STATS.resumeSession();
+                               if (!result.isCancelled && totalPages > 0) {
+                                 const int percent = clampReaderPercent(std::get<PercentResult>(result.data).percent);
+                                 currentPage =
+                                     std::min(totalPages - 1, (percent * std::max(0, totalPages - 1) + 50) / 100);
+                                 pendingForceFullRefresh = true;
+                                 requestUpdate();
+                               }
+                             });
+      break;
+    }
+    case ReaderJumpMenuActivity::Action::CHAPTERS:
+    case ReaderJumpMenuActivity::Action::BOOKMARKS:
+    case ReaderJumpMenuActivity::Action::BACK_TO_READING:
+      READING_STATS.resumeSession();
+      requestUpdate();
+      break;
+  }
+}
+
 void TxtReaderActivity::loop() {
   READING_STATS.tickActiveSession();
   const unsigned long nowMs = millis();
@@ -341,12 +439,18 @@ void TxtReaderActivity::loop() {
     return;
   }
 
-  // Long press BACK (1s+) goes to file selection
-  if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
-    READING_STATS.endSession();
-    ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
-    showPendingAchievementPopups(renderer);
-    activityManager.goToFileBrowser(txt ? txt->getPath() : "");
+  // Long press BACK opens the reader navigation menu.
+  if (mappedInput.isPressed(MappedInputManager::Button::Back) && !backLongPressHandled &&
+      mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
+    backLongPressHandled = true;
+    waitingForConfirmSecondClick = false;
+    firstConfirmClickMs = 0UL;
+    openReaderNavigationMenu();
+    return;
+  }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backLongPressHandled) {
+    backLongPressHandled = false;
     return;
   }
 

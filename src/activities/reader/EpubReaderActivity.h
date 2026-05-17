@@ -37,6 +37,7 @@ class EpubReaderActivity final : public Activity {
   bool automaticPageTurnActive = false;
   bool pendingForceFullRefresh = false;
   bool waitingForConfirmSecondClick = false;
+  bool backLongPressHandled = false;
   unsigned long firstConfirmClickMs = 0UL;
   bool quickSettingsOpen = false;
   bool quickSettingsTabFocused = true;
@@ -62,6 +63,12 @@ class EpubReaderActivity final : public Activity {
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
+  void openReaderNavigationMenu();
+  void openJumpMenu();
+  void openRecentBooksSwitcher();
+  void openBookInfoPlaceholder();
+  void handleReaderNavigationAction(int action);
+  void handleJumpMenuAction(int action);
   void applyOrientation(uint8_t orientation);
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void pageTurn(bool isForwardTurn);

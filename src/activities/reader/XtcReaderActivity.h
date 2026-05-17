@@ -19,12 +19,19 @@ class XtcReaderActivity final : public Activity {
   int pagesUntilFullRefresh = 0;
   bool pendingForceFullRefresh = false;
   bool waitingForConfirmSecondClick = false;
+  bool backLongPressHandled = false;
   unsigned long firstConfirmClickMs = 0UL;
 
   void renderPage();
   void saveProgress() const;
   void loadProgress();
   void requestCurrentPageFullRefresh();
+  void openReaderNavigationMenu();
+  void openJumpMenu();
+  void openRecentBooksSwitcher();
+  void openBookInfoPlaceholder();
+  void handleReaderNavigationAction(int action);
+  void handleJumpMenuAction(int action);
 
  public:
   explicit XtcReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Xtc> xtc)

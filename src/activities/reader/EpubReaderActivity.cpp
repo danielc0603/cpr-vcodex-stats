@@ -25,7 +25,11 @@
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "QrDisplayActivity.h"
+#include "ReaderBookInfoActivity.h"
+#include "ReaderJumpMenuActivity.h"
+#include "ReaderNavigationMenuActivity.h"
 #include "ReaderQuickSettingsActivity.h"
+#include "ReaderRecentBooksActivity.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontGlobals.h"
@@ -432,12 +436,18 @@ void EpubReaderActivity::loop() {
                            });
   }
 
-  // Long press BACK (1s+) goes to file selection
-  if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
-    READING_STATS.endSession();
-    ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
-    showPendingAchievementPopups(renderer);
-    activityManager.goToFileBrowser(epub ? epub->getPath() : "");
+  // Long press BACK opens the reader navigation menu.
+  if (mappedInput.isPressed(MappedInputManager::Button::Back) && !backLongPressHandled &&
+      mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
+    backLongPressHandled = true;
+    waitingForConfirmSecondClick = false;
+    firstConfirmClickMs = 0UL;
+    openReaderNavigationMenu();
+    return;
+  }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backLongPressHandled) {
+    backLongPressHandled = false;
     return;
   }
 
@@ -751,6 +761,88 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       }
       break;
     }
+  }
+}
+
+void EpubReaderActivity::openReaderNavigationMenu() {
+  READING_STATS.noteActivity();
+  startActivityForResult(std::make_unique<ReaderNavigationMenuActivity>(renderer, mappedInput, epub->getTitle()),
+                         [this](const ActivityResult& result) {
+                           READING_STATS.resumeSession();
+                           backLongPressHandled = false;
+                           if (!result.isCancelled) {
+                             handleReaderNavigationAction(std::get<MenuResult>(result.data).action);
+                           } else {
+                             requestUpdate();
+                           }
+                         });
+}
+
+void EpubReaderActivity::openJumpMenu() {
+  READING_STATS.noteActivity();
+  startActivityForResult(std::make_unique<ReaderJumpMenuActivity>(
+                             renderer, mappedInput, tr(STR_JUMP_MENU), epub->getTocItemsCount() > 0,
+                             !bookmarkStore.isEmpty()),
+                         [this](const ActivityResult& result) {
+                           READING_STATS.resumeSession();
+                           if (!result.isCancelled) {
+                             handleJumpMenuAction(std::get<MenuResult>(result.data).action);
+                           } else {
+                             requestUpdate();
+                           }
+                         });
+}
+
+void EpubReaderActivity::openRecentBooksSwitcher() {
+  READING_STATS.noteActivity();
+  startActivityForResult(std::make_unique<ReaderRecentBooksActivity>(renderer, mappedInput, epub->getPath()),
+                         [this](const ActivityResult& result) {
+                           if (!result.isCancelled) {
+                             const std::string path = std::get<KeyboardResult>(result.data).text;
+                             if (!path.empty()) {
+                               activityManager.goToReader(path);
+                               return;
+                             }
+                           }
+                           READING_STATS.resumeSession();
+                           openReaderNavigationMenu();
+                         });
+}
+
+void EpubReaderActivity::openBookInfoPlaceholder() {
+  READING_STATS.noteActivity();
+  startActivityForResult(std::make_unique<ReaderBookInfoActivity>(renderer, mappedInput, epub->getTitle()),
+                         [this](const ActivityResult&) {
+                           READING_STATS.resumeSession();
+                           openReaderNavigationMenu();
+                         });
+}
+
+void EpubReaderActivity::handleReaderNavigationAction(const int action) {
+  switch (static_cast<ReaderNavigationMenuActivity::Action>(action)) {
+    case ReaderNavigationMenuActivity::Action::OPEN_RECENT_BOOKS:
+      openRecentBooksSwitcher();
+      break;
+    case ReaderNavigationMenuActivity::Action::BOOK_INFO:
+      openBookInfoPlaceholder();
+      break;
+  }
+}
+
+void EpubReaderActivity::handleJumpMenuAction(const int action) {
+  switch (static_cast<ReaderJumpMenuActivity::Action>(action)) {
+    case ReaderJumpMenuActivity::Action::CHAPTERS:
+      onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER);
+      break;
+    case ReaderJumpMenuActivity::Action::PERCENT:
+      onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::GO_TO_PERCENT);
+      break;
+    case ReaderJumpMenuActivity::Action::BOOKMARKS:
+      onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::BOOKMARKS);
+      break;
+    case ReaderJumpMenuActivity::Action::BACK_TO_READING:
+      requestUpdate();
+      break;
   }
 }
 
