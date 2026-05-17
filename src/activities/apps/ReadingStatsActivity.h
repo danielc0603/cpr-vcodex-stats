@@ -10,7 +10,9 @@ class ReadingStatsActivity final : public Activity {
   int selectedIndex = 0;
   bool waitForConfirmRelease = false;
   bool waitForBackRelease = false;
+  bool confirmLongPressHandled = false;
   void openSelectedEntry();
+  void confirmRemoveSelectedEntry();
   void guardBackReturn();
 
  public:

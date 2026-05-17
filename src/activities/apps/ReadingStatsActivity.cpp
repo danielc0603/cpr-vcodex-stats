@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ReadingStatsDetailActivity.h"
@@ -27,6 +28,7 @@ constexpr int BOOKS_PER_PAGE = 2;
 constexpr int SUMMARY_SELECTION_INDEX = 0;
 constexpr int DETAILS_SELECTION_INDEX = 1;
 constexpr int FIRST_BOOK_SELECTION_INDEX = 2;
+constexpr unsigned long REMOVE_STATS_LONG_PRESS_MS = 700;
 
 std::string getBookTitle(const ReadingBookStats& book) { return book.title.empty() ? book.path : book.title; }
 
@@ -149,6 +151,86 @@ int originalBookIndexForSelection(const BookSections& sections, const int select
 }
 
 void drawMiniProgressBar(GfxRenderer& renderer, const Rect& rect, const uint8_t percent);
+
+class RemoveStatsConfirmationActivity final : public Activity {
+  std::string bookTitle;
+  bool waitForConfirmRelease = false;
+  bool waitForBackRelease = false;
+
+ public:
+  RemoveStatsConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookTitle)
+      : Activity("RemoveStatsConfirmation", renderer, mappedInput), bookTitle(std::move(bookTitle)) {}
+
+  void onEnter() override {
+    Activity::onEnter();
+    waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+    waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back);
+    requestUpdate(true);
+  }
+
+  void loop() override {
+    if (waitForBackRelease) {
+      if (!mappedInput.isPressed(MappedInputManager::Button::Back) &&
+          !mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+        waitForBackRelease = false;
+      }
+      return;
+    }
+    if (waitForConfirmRelease) {
+      if (!mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+          !mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+        waitForConfirmRelease = false;
+      }
+      return;
+    }
+
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      ActivityResult result;
+      result.isCancelled = true;
+      setResult(std::move(result));
+      finish();
+      return;
+    }
+
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      ActivityResult result;
+      result.isCancelled = false;
+      setResult(std::move(result));
+      finish();
+    }
+  }
+
+  void render(RenderLock&&) override {
+    renderer.clearScreen();
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    const int pageWidth = renderer.getScreenWidth();
+    const int sidePadding = metrics.contentSidePadding;
+    int currentY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 18;
+
+    HeaderDateUtils::drawHeaderWithDate(renderer, tr(STR_READING_STATS));
+    renderer.drawCenteredText(UI_12_FONT_ID, currentY, tr(STR_REMOVE_FROM_READING_STATS), true, EpdFontFamily::BOLD);
+    currentY += renderer.getLineHeight(UI_12_FONT_ID) + 18;
+
+    const auto titleLines =
+        renderer.wrappedText(UI_10_FONT_ID, bookTitle.c_str(), pageWidth - sidePadding * 2, 2, EpdFontFamily::BOLD);
+    for (const auto& line : titleLines) {
+      renderer.drawCenteredText(UI_10_FONT_ID, currentY, line.c_str(), true, EpdFontFamily::BOLD);
+      currentY += renderer.getLineHeight(UI_10_FONT_ID);
+    }
+    currentY += 14;
+
+    const auto bodyLines =
+        renderer.wrappedText(UI_10_FONT_ID, tr(STR_REMOVE_STATS_ENTRY_BODY), pageWidth - sidePadding * 2, 4);
+    for (const auto& line : bodyLines) {
+      renderer.drawText(UI_10_FONT_ID, sidePadding, currentY, line.c_str());
+      currentY += renderer.getLineHeight(UI_10_FONT_ID) + 2;
+    }
+
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_REMOVE), "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+  }
+};
 
 void drawMoreDetailsButton(GfxRenderer& renderer, const Rect& rect, const bool selected) {
   if (selected) {
@@ -319,7 +401,22 @@ void ReadingStatsActivity::loop() {
     return;
   }
 
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    confirmLongPressHandled = false;
+  }
+
+  if (mappedInput.isPressed(MappedInputManager::Button::Confirm) && selectedIndex >= FIRST_BOOK_SELECTION_INDEX &&
+      !confirmLongPressHandled && mappedInput.getHeldTime() >= REMOVE_STATS_LONG_PRESS_MS) {
+    confirmLongPressHandled = true;
+    confirmRemoveSelectedEntry();
+    return;
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (confirmLongPressHandled) {
+      confirmLongPressHandled = false;
+      return;
+    }
     openSelectedEntry();
     return;
   }
@@ -366,6 +463,30 @@ void ReadingStatsActivity::loop() {
     }
     requestUpdate();
   });
+}
+
+void ReadingStatsActivity::confirmRemoveSelectedEntry() {
+  const auto& books = READING_STATS.getBooks();
+  const BookSections sections = buildBookSections(books);
+  const int bookIndex = originalBookIndexForSelection(sections, selectedIndex);
+  if (bookIndex < 0 || bookIndex >= static_cast<int>(books.size())) {
+    return;
+  }
+
+  const std::string path = books[bookIndex].path;
+  const std::string title = getBookTitle(books[bookIndex]);
+  startActivityForResult(std::make_unique<RemoveStatsConfirmationActivity>(renderer, mappedInput, title),
+                         [this, path](const ActivityResult& result) {
+                           guardBackReturn();
+                           confirmLongPressHandled = false;
+                           if (!result.isCancelled) {
+                             READING_STATS.removeBook(path);
+                             const BookSections updatedSections = buildBookSections(READING_STATS.getBooks());
+                             const int maxSelectableIndex = updatedSections.totalRows() + FIRST_BOOK_SELECTION_INDEX - 1;
+                             selectedIndex = std::clamp(selectedIndex, DETAILS_SELECTION_INDEX, maxSelectableIndex);
+                           }
+                           requestUpdate(true);
+                         });
 }
 
 void ReadingStatsActivity::openSelectedEntry() {
