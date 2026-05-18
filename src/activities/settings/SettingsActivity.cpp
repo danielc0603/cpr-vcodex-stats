@@ -73,8 +73,8 @@ const std::vector<SettingInfo>& getDeviceDisplaySettings() {
           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15, StrId::STR_PAGES_30}),
       SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
                         {StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_CUSTOM, StrId::STR_THEME_LYRA_VCODEX2}),
-      SettingInfo::Enum(StrId::STR_FILE_BROWSER_VIEW, &CrossPointSettings::fileBrowserView,
-                        {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_BOOKSHELF}),
+      SettingInfo::Enum(StrId::STR_MENU_RECENT_BOOKS, &CrossPointSettings::recentBooksView,
+                        {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_GRID}),
       SettingInfo::Toggle(StrId::STR_SHOW_CURRENT_BOOK_CARD, &CrossPointSettings::showCurrentBookCard),
       SettingInfo::Toggle(StrId::STR_DARK_MODE, &CrossPointSettings::darkMode),
       SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix),
@@ -118,13 +118,10 @@ const std::vector<SettingInfo>& getDeviceReaderSettings() {
 const std::vector<SettingInfo>& getDeviceControlsSettings() {
   static const std::vector<SettingInfo> settings = [] {
     std::vector<SettingInfo> result = {
-        SettingInfo::Section(StrId::STR_SHORT_PWR_BTN),
         SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
                           {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH}),
-        SettingInfo::Section(StrId::STR_REMAP_FRONT_BUTTONS),
         SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons),
         SettingInfo::Toggle(StrId::STR_LONG_PRESS_SKIP, &CrossPointSettings::longPressChapterSkip),
-        SettingInfo::Section(StrId::STR_SIDE_BTN_LAYOUT),
         SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &CrossPointSettings::sideButtonLayout,
                           {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV}),
     };
@@ -156,9 +153,7 @@ const std::vector<SettingInfo>& getDeviceSystemSettings() {
 }
 
 const std::vector<SettingInfo>& getDeviceOnlyControlSettings() {
-  static const std::vector<SettingInfo> settings = {
-      SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons),
-  };
+  static const std::vector<SettingInfo> settings = {};
   return settings;
 }
 
@@ -188,8 +183,6 @@ const std::vector<SettingInfo>& getDeviceOnlyAppSettings() {
       SettingInfo::Enum(
           StrId::STR_DATE_FORMAT, &CrossPointSettings::dateFormat,
           {StrId::STR_DATE_FORMAT_DD_MM_YYYY, StrId::STR_DATE_FORMAT_MM_DD_YYYY, StrId::STR_DATE_FORMAT_YYYY_MM_DD}),
-      SettingInfo::Enum(StrId::STR_MENU_RECENT_BOOKS, &CrossPointSettings::recentBooksView,
-                        {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_GRID}),
       SettingInfo::Section(StrId::STR_READING_STATS),
       SettingInfo::Action(StrId::STR_READING_STATS, SettingAction::ReadingStats),
       SettingInfo::Enum(StrId::STR_DAILY_GOAL, &CrossPointSettings::dailyGoalTarget,
