@@ -31,9 +31,12 @@
 #include "fontIds.h"
 #include "util/AchievementPopupUtils.h"
 #include "util/BookIdentity.h"
+#include "util/RecentBooksGrid.h"
 
 namespace {
 constexpr unsigned long skipPageMs = 700;
+constexpr int HOME_COVER_HEIGHT = 164;
+constexpr int HOME_COVER_WIDTH = 109;
 
 std::string getStableProgressPath(const std::string& bookId) {
   return BookIdentity::getStableDataFilePath(bookId, "xtc_progress.bin");
@@ -126,6 +129,9 @@ void XtcReaderActivity::onEnter() {
   APP_STATE.openEpubPath = xtc->getPath();
   APP_STATE.saveToFile();
   RECENT_BOOKS.addBook(xtc->getPath(), xtc->getTitle(), xtc->getAuthor(), xtc->getThumbBmpPath(), stableBookId);
+  UITheme::ensureBookCoverThumbPath(xtc->getPath(), xtc->getThumbBmpPath(), RecentBooksGrid::kCoverWidth,
+                                    RecentBooksGrid::kCoverHeight);
+  UITheme::ensureBookCoverThumbPath(xtc->getPath(), xtc->getThumbBmpPath(), HOME_COVER_WIDTH, HOME_COVER_HEIGHT);
   READING_STATS.beginSession(xtc->getPath(), xtc->getTitle(), xtc->getAuthor(), xtc->getCoverBmpPath(),
                              xtc->calculateProgress(currentPage), getChapterTitleForStats(*xtc, currentPage),
                              getChapterProgressForStats(*xtc, currentPage));

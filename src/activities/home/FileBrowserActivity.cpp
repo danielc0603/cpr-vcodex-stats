@@ -741,20 +741,8 @@ bool FileBrowserActivity::resolveEntryCover(const int index, const bool allowGen
     return false;
   }
 
-  std::string generatedThumbPath;
-  if (FsHelpers::hasEpubExtension(path)) {
-    Epub epub(path, "/.crosspoint");
-    if (epub.load(false, true) && epub.generateThumbBmp(SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT)) {
-      sourceCoverPath = epub.getThumbBmpPath();
-      generatedThumbPath = epub.getThumbBmpPath(SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT);
-    }
-  } else if (FsHelpers::hasXtcExtension(path)) {
-    Xtc xtc(path, "/.crosspoint");
-    if (xtc.load() && xtc.generateThumbBmp(SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT)) {
-      sourceCoverPath = xtc.getThumbBmpPath();
-      generatedThumbPath = xtc.getThumbBmpPath(SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT);
-    }
-  }
+  const std::string generatedThumbPath =
+      UITheme::ensureBookCoverThumbPath(path, sourceCoverPath, SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT);
 
   if (!generatedThumbPath.empty() && Storage.exists(generatedThumbPath.c_str())) {
     entryCoverPaths[index] = generatedThumbPath;
@@ -1169,13 +1157,14 @@ bool FileBrowserActivity::isBookshelfMode() const {
 int FileBrowserActivity::getBookshelfColumns() const {
   if (isLibraryDashboard()) return 2;
   if (isLibraryShelf()) return 3;
+  if (basepath != "/") return 2;
   return 3;
 }
 
 int FileBrowserActivity::getBookshelfCardHeight() const {
   if (isLibraryDashboard()) return 146;
   if (isLibraryShelf()) return 236;
-  if (basepath != "/") return 236;
+  if (basepath != "/") return 252;
   return getBookshelfColumns() == 2 ? 170 : 146;
 }
 

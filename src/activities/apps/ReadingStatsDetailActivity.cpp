@@ -595,7 +595,7 @@ void ReadingStatsDetailActivity::guardChildReturn() {
 
 void ReadingStatsDetailActivity::loop() {
   if (waitForBackRelease) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Back)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Back) && !mappedInput.isAnyMappedButtonPressed()) {
       waitForBackRelease = false;
     }
     return;
@@ -607,7 +607,7 @@ void ReadingStatsDetailActivity::loop() {
   }
 
   if (waitForConfirmRelease) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm) && !mappedInput.isAnyMappedButtonPressed()) {
       waitForConfirmRelease = false;
     }
     return;

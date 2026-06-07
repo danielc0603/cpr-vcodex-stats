@@ -550,7 +550,9 @@ void HomeActivity::render(RenderLock&&) {
     GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, dashboardHeight},
                             recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                             std::bind(&HomeActivity::storeCoverBuffer, this));
-    coverBufferStored = storeCoverBuffer();
+    if (!coverBufferStored) {
+      coverBufferStored = storeCoverBuffer();
+    }
     coverBufferSelectionState = coverBufferStored ? dashboardSelectionState : -99;
     coverRendered = coverBufferStored;
   }

@@ -257,6 +257,45 @@ std::string UITheme::resolveBookCoverThumbPath(const std::string& bookPath, cons
   return "";
 }
 
+std::string UITheme::ensureBookCoverThumbPath(const std::string& bookPath, const std::string& coverBmpPath,
+                                              const int preferredWidth, const int preferredHeight) {
+  if (bookPath.empty() || preferredWidth <= 0 || preferredHeight <= 0) {
+    return "";
+  }
+
+  const std::string existing = resolveBookCoverThumbPath(bookPath, coverBmpPath, preferredWidth, preferredHeight);
+  if (!existing.empty()) {
+    return existing;
+  }
+
+  std::string generated;
+  std::string reusableCoverPath = coverBmpPath;
+  if (FsHelpers::hasEpubExtension(bookPath)) {
+    Epub epub(bookPath, "/.crosspoint");
+    if (epub.load(true, true) && epub.generateThumbBmp(preferredWidth, preferredHeight)) {
+      reusableCoverPath = epub.getThumbBmpPath();
+      generated = epub.getThumbBmpPath(preferredWidth, preferredHeight);
+    }
+  } else if (FsHelpers::hasXtcExtension(bookPath)) {
+    Xtc xtc(bookPath, "/.crosspoint");
+    if (xtc.load() && xtc.generateThumbBmp(preferredWidth, preferredHeight)) {
+      reusableCoverPath = xtc.getThumbBmpPath();
+      generated = xtc.getThumbBmpPath(preferredWidth, preferredHeight);
+    }
+  }
+
+  if (!generated.empty() && Storage.exists(generated.c_str())) {
+    rememberBookCoverPath(bookPath, reusableCoverPath, preferredWidth, preferredHeight, generated);
+    if (reusableCoverPath != coverBmpPath) {
+      rememberBookCoverPath(bookPath, coverBmpPath, preferredWidth, preferredHeight, generated);
+    }
+    return generated;
+  }
+
+  rememberBookCoverPath(bookPath, coverBmpPath, preferredWidth, preferredHeight, "");
+  return "";
+}
+
 UIIcon UITheme::getFileIcon(const std::string& filename) {
   if (filename.back() == '/') {
     return Folder;

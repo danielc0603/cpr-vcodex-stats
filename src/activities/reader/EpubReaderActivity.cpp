@@ -40,6 +40,7 @@
 #include "util/AchievementPopupUtils.h"
 #include "util/BookIdentity.h"
 #include "util/ReadingStatsAnalytics.h"
+#include "util/RecentBooksGrid.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
@@ -53,6 +54,8 @@ constexpr int QS_TAB_DISPLAY = 1;
 constexpr int QS_TAB_COUNT = 2;
 constexpr int QS_READER_ITEM_COUNT = 4;
 constexpr int QS_DISPLAY_ITEM_COUNT = 3;
+constexpr int HOME_COVER_HEIGHT = 164;
+constexpr int HOME_COVER_WIDTH = 109;
 constexpr StrId QS_TAB_LABELS[QS_TAB_COUNT] = {StrId::STR_CAT_READER, StrId::STR_CAT_DISPLAY};
 constexpr StrId QS_READER_LABELS[QS_READER_ITEM_COUNT] = {StrId::STR_FONT_SIZE, StrId::STR_LINE_SPACING,
                                                           StrId::STR_SCREEN_MARGIN, StrId::STR_PARA_ALIGNMENT};
@@ -305,6 +308,9 @@ void EpubReaderActivity::onEnter() {
   APP_STATE.openEpubPath = epub->getPath();
   APP_STATE.saveToFile();
   RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getThumbBmpPath(), stableBookId);
+  UITheme::ensureBookCoverThumbPath(epub->getPath(), epub->getThumbBmpPath(), RecentBooksGrid::kCoverWidth,
+                                    RecentBooksGrid::kCoverHeight);
+  UITheme::ensureBookCoverThumbPath(epub->getPath(), epub->getThumbBmpPath(), HOME_COVER_WIDTH, HOME_COVER_HEIGHT);
   READING_STATS.beginSession(
       epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getCoverBmpPath(),
       clampPercent(static_cast<int>(epub->calculateProgress(currentSpineIndex, 0.0f) * 100.0f + 0.5f)),

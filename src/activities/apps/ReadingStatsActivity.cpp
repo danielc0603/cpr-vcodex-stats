@@ -163,20 +163,21 @@ class RemoveStatsConfirmationActivity final : public Activity {
 
   void onEnter() override {
     Activity::onEnter();
-    waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
-    waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back);
+    waitForConfirmRelease =
+        mappedInput.isPressed(MappedInputManager::Button::Confirm) || mappedInput.isAnyMappedButtonPressed();
+    waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back) || mappedInput.isAnyMappedButtonPressed();
     requestUpdate(true);
   }
 
   void loop() override {
     if (waitForBackRelease) {
-      if (!mappedInput.isPressed(MappedInputManager::Button::Back)) {
+      if (!mappedInput.isPressed(MappedInputManager::Button::Back) && !mappedInput.isAnyMappedButtonPressed()) {
         waitForBackRelease = false;
       }
       return;
     }
     if (waitForConfirmRelease) {
-      if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+      if (!mappedInput.isPressed(MappedInputManager::Button::Confirm) && !mappedInput.isAnyMappedButtonPressed()) {
         waitForConfirmRelease = false;
       }
       return;
@@ -381,7 +382,7 @@ void ReadingStatsActivity::loop() {
   const int pageItems = BOOKS_PER_PAGE;
 
   if (waitForBackRelease) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Back)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Back) && !mappedInput.isAnyMappedButtonPressed()) {
       waitForBackRelease = false;
     }
     return;
@@ -393,7 +394,7 @@ void ReadingStatsActivity::loop() {
   }
 
   if (waitForConfirmRelease) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm) && !mappedInput.isAnyMappedButtonPressed()) {
       waitForConfirmRelease = false;
     }
     return;
@@ -526,8 +527,9 @@ void ReadingStatsActivity::openSelectedEntry() {
 
 void ReadingStatsActivity::guardBackReturn() {
   mappedInput.armPressedButtonsReleaseGuard();
-  waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back);
-  waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back) || mappedInput.isAnyMappedButtonPressed();
+  waitForConfirmRelease =
+      mappedInput.isPressed(MappedInputManager::Button::Confirm) || mappedInput.isAnyMappedButtonPressed();
 }
 
 void ReadingStatsActivity::render(RenderLock&&) {
