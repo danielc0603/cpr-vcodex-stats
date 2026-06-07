@@ -502,7 +502,8 @@ void ReadingStatsDetailActivity::onEnter() {
   scrollDirection = 0;
   confirmLongPressHandled = false;
   holdPreviewVisible = false;
-  waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  waitForConfirmRelease =
+      mappedInput.isPressed(MappedInputManager::Button::Confirm) || mappedInput.isAnyMappedButtonPressed();
   waitForBackRelease = false;
   if (const auto* book = findBook(bookPath)) {
     resolvedCoverBmpPath = findFastCoverPath(*book);
@@ -587,7 +588,8 @@ void ReadingStatsDetailActivity::guardChildReturn() {
   invalidateBaseScreenBuffer();
   mappedInput.armPressedButtonsReleaseGuard();
   waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back);
-  waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  waitForConfirmRelease =
+      mappedInput.isPressed(MappedInputManager::Button::Confirm) || mappedInput.isAnyMappedButtonPressed();
   confirmLongPressHandled = false;
 }
 

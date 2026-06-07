@@ -369,7 +369,8 @@ void ReadingStatsActivity::onEnter() {
   const auto& books = READING_STATS.getBooks();
   const BookSections sections = buildBookSections(books);
   selectedIndex = summaryBook(books, sections) == nullptr ? DETAILS_SELECTION_INDEX : SUMMARY_SELECTION_INDEX;
-  waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  waitForConfirmRelease =
+      mappedInput.isPressed(MappedInputManager::Button::Confirm) || mappedInput.isAnyMappedButtonPressed();
   waitForBackRelease = false;
   requestUpdate();
 }

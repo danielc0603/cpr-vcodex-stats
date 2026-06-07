@@ -263,6 +263,9 @@ bool MappedInputManager::wasAnyPressed() const { return !consumeSuppressedRawInp
 bool MappedInputManager::wasAnyReleased() const { return !consumeSuppressedRawInput() && gpio.wasAnyReleased(); }
 
 bool MappedInputManager::isAnyMappedButtonPressed() const {
+  if (hasSuppressedRawButtonHeld()) {
+    return true;
+  }
   return isPressed(Button::Back) || isPressed(Button::Confirm) || isPressed(Button::Left) ||
          isPressed(Button::Right) || isPressed(Button::Up) || isPressed(Button::Down) ||
          isPressed(Button::Power) || isPressed(Button::PageBack) || isPressed(Button::PageForward);

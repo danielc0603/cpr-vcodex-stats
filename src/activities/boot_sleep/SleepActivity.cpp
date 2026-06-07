@@ -297,6 +297,8 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const std::str
     SleepScreenCache::save(renderer, sourcePath);
   }
 
+  const bool restoreFadingFix = renderer.getFadingFix();
+  renderer.setFadingFix(true);
   renderer.displayBuffer(hasGreyscale ? HalDisplay::HALF_REFRESH : HalDisplay::FULL_REFRESH);
 
   if (hasGreyscale) {
@@ -315,6 +317,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const std::str
     renderer.displayGrayBuffer();
     renderer.setRenderMode(GfxRenderer::BW);
   }
+  renderer.setFadingFix(restoreFadingFix);
 }
 
 bool SleepActivity::renderPngSleepScreen(const std::string& sourcePath) const {

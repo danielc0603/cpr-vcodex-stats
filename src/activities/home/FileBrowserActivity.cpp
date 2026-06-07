@@ -227,6 +227,22 @@ bool drawCachedCover(GfxRenderer& renderer, const std::string& coverPath, const 
   return ok;
 }
 
+Rect calculateBookCoverRect(const Rect& card, const Rect& inner, const int statusStripTop, const int titleReserve,
+                            const int subtitleReserve) {
+  const int availableHeight = std::max(64, statusStripTop - inner.y - titleReserve - subtitleReserve - 12);
+  const int maxCoverHeight = std::max(64, std::min(SHELF_COVER_HEIGHT, availableHeight));
+  const int maxCoverWidth = std::max(54, inner.width - 8);
+
+  int coverHeight = maxCoverHeight;
+  int coverWidth = coverHeight * SHELF_COVER_WIDTH / SHELF_COVER_HEIGHT;
+  if (coverWidth > maxCoverWidth) {
+    coverWidth = maxCoverWidth;
+    coverHeight = std::max(64, coverWidth * SHELF_COVER_HEIGHT / SHELF_COVER_WIDTH);
+  }
+
+  return Rect{card.x + (card.width - coverWidth) / 2, inner.y, coverWidth, coverHeight};
+}
+
 class BookActionsActivity final : public Activity {
   struct Item {
     BookAction action;
@@ -1351,17 +1367,11 @@ void FileBrowserActivity::renderBookshelf(const Rect& rect, const int pageItems)
       const int subtitleReserve =
           getEntrySubtitle(index).empty() ? 0 : renderer.getLineHeight(SMALL_FONT_ID) * subtitleLineCount + 4;
       const int titleReserve = renderer.getLineHeight(SMALL_FONT_ID) * (basepath != "/" ? 3 : 2) + 8;
-      const int placeholderMaxHeight = statusStripTop - inner.y - titleReserve - subtitleReserve - 12;
       const bool bookTile = coverShelf || basepath != "/";
-      const int placeholderHeight =
-          bookTile ? std::min(SHELF_COVER_HEIGHT, std::max(88, placeholderMaxHeight))
-                   : std::min(52, std::max(36, placeholderMaxHeight));
-      const int placeholderWidth =
-          bookTile ? std::min(SHELF_COVER_WIDTH, std::max(58, inner.width - 10))
-                   : std::min(inner.width, std::max(46, placeholderHeight + 12));
-      const int placeholderX = card.x + (card.width - placeholderWidth) / 2;
-      const int placeholderY = inner.y;
-      const Rect visualRect{placeholderX, placeholderY, placeholderWidth, placeholderHeight};
+      const Rect visualRect =
+          bookTile ? calculateBookCoverRect(card, inner, statusStripTop, titleReserve, subtitleReserve)
+                   : Rect{card.x + (card.width - std::min(inner.width, 58)) / 2, inner.y,
+                          std::min(inner.width, 58), 52};
       const bool shouldDrawCover = bookTile && index >= 0 && index < static_cast<int>(entryCoverPaths.size());
       const bool coverDrawn = shouldDrawCover && drawCachedCover(renderer, entryCoverPaths[index], visualRect);
       if (!coverDrawn) {
@@ -1370,7 +1380,7 @@ void FileBrowserActivity::renderBookshelf(const Rect& rect, const int pageItems)
 
       const auto titleLines =
           renderer.wrappedText(SMALL_FONT_ID, getEntryTitle(index).c_str(), textWidth, basepath != "/" ? 3 : 2);
-      int lineY = placeholderY + placeholderHeight + 8;
+      int lineY = visualRect.y + visualRect.height + 8;
       const int subtitleBottom = statusStripTop - 6;
       for (const auto& line : titleLines) {
         if (lineY > subtitleBottom - renderer.getLineHeight(SMALL_FONT_ID)) break;

@@ -57,11 +57,6 @@ constexpr int LIST_VALUE_MAX_WIDTH = 190;
 constexpr int LIST_ICON_SIZE = 24;
 constexpr int LIST_MENU_ICON_SIZE = 32;
 
-uint8_t progressForBook(const RecentBook& book) {
-  const ReadingBookStats* stats = READING_STATS.findMatchingBookForPath(book.path, book.title, book.author);
-  return stats ? (stats->completed ? 100 : std::min<uint8_t>(stats->lastProgressPercent, 100)) : 0;
-}
-
 std::string compactTime(const uint64_t ms) { return ReadingStatsAnalytics::formatDurationHm(ms); }
 
 std::string formatHeroEstimate(const ReadingStatsAnalytics::TimeLeftEstimate& estimate) {
@@ -168,7 +163,9 @@ void drawUpNextCard(GfxRenderer& renderer, const Rect& rect, const RecentBook& b
   drawCardSurface(renderer, rect, selected);
   const int contentX = rect.x + SP_16;
   const int contentW = rect.width - SP_16 * 2;
-  const uint8_t progressPercent = progressForBook(book);
+  const ReadingBookStats* stats = READING_STATS.findMatchingBookForPath(book.path, book.title, book.author);
+  const uint8_t progressPercent =
+      stats ? (stats->completed ? 100 : std::min<uint8_t>(stats->lastProgressPercent, 100)) : 0;
   const std::string progressText = std::to_string(progressPercent) + "%";
   const int progressW = renderer.getTextWidth(SMALL_FONT_ID, progressText.c_str(), EpdFontFamily::BOLD);
   const int labelW = std::max(0, contentW - progressW - SP_12);
@@ -395,7 +392,9 @@ void LyraVcodex2Theme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, con
   coverBufferStored = false;
   bufferRestored = false;
 
-  const uint8_t progressPercent = progressForBook(book);
+  const ReadingBookStats* stats = READING_STATS.findMatchingBookForPath(book.path, book.title, book.author);
+  const uint8_t progressPercent =
+      stats ? (stats->completed ? 100 : std::min<uint8_t>(stats->lastProgressPercent, 100)) : 0;
   const std::string progressText = std::to_string(progressPercent) + "%";
   const int progressTextWidth = renderer.getTextWidth(UI_12_FONT_ID, progressText.c_str(), EpdFontFamily::BOLD);
   const int titleW = std::max(20, textW - progressTextWidth - SP_8);
@@ -420,7 +419,6 @@ void LyraVcodex2Theme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, con
   currentY = std::min(currentY + SP_12, heroY + heroH - 58);
   drawMiniProgressBar(renderer, Rect{textX, currentY, textW, PROGRESS_BAR_HEIGHT}, progressPercent);
 
-  const ReadingBookStats* stats = READING_STATS.findMatchingBookForPath(book.path, book.title, book.author);
   if (stats != nullptr) {
     currentY += PROGRESS_BAR_HEIGHT + SP_12;
     drawLabelValueLine(renderer, textX, currentY, textW, tr(STR_TOTAL_READ), compactTime(stats->totalReadingMs));

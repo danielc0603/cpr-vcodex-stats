@@ -100,6 +100,7 @@ class GfxRenderer {
 
   // Fading fix control
   void setFadingFix(const bool enabled) { fadingFix = enabled; }
+  bool getFadingFix() const { return fadingFix; }
   void setDarkMode(const bool enabled) { darkMode = enabled; }
   bool isDarkMode() const { return darkMode; }
   void requestNextFullRefresh() const { nextRefreshFull = true; }

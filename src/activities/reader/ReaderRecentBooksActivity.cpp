@@ -48,6 +48,7 @@ void ReaderRecentBooksActivity::loadBooks() {
 void ReaderRecentBooksActivity::onEnter() {
   Activity::onEnter();
   loadBooks();
+  mappedInput.armPressedButtonsReleaseGuard();
   waitForInputRelease = mappedInput.isAnyMappedButtonPressed();
   requestUpdate();
 }

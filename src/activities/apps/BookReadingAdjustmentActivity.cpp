@@ -189,8 +189,10 @@ void BookReadingAdjustmentActivity::loop() {
     return;
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this] { adjustSelectedValue(-1); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, [this] { adjustSelectedValue(1); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up, MappedInputManager::Button::Left},
+                                       [this] { adjustSelectedValue(-1); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down, MappedInputManager::Button::Right},
+                                       [this] { adjustSelectedValue(1); });
 }
 
 void BookReadingAdjustmentActivity::render(RenderLock&&) {
