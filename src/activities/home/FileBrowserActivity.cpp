@@ -90,6 +90,54 @@ enum LibraryCardState : uint8_t {
   LIBRARY_STATE_PINNED = 4,
 };
 
+enum EntryCoverState : uint8_t {
+  ENTRY_COVER_UNKNOWN = 0,
+  ENTRY_COVER_READY = 1,
+  ENTRY_COVER_MISSING = 2,
+};
+
+struct ThumbnailCacheRecord {
+  std::string bookPath;
+  std::string sourceCoverPath;
+  std::string thumbPath;
+  int width = 0;
+  int height = 0;
+  uint8_t state = ENTRY_COVER_UNKNOWN;
+};
+
+std::vector<ThumbnailCacheRecord>& thumbnailCache() {
+  static std::vector<ThumbnailCacheRecord> cache;
+  return cache;
+}
+
+ThumbnailCacheRecord* findThumbnailCacheRecord(const std::string& bookPath, const std::string& sourceCoverPath,
+                                                const int width, const int height) {
+  auto& cache = thumbnailCache();
+  for (auto& record : cache) {
+    if (record.bookPath == bookPath && record.sourceCoverPath == sourceCoverPath && record.width == width &&
+        record.height == height) {
+      return &record;
+    }
+  }
+  return nullptr;
+}
+
+void rememberThumbnailCacheRecord(const std::string& bookPath, const std::string& sourceCoverPath,
+                                  const std::string& thumbPath, const int width, const int height,
+                                  const uint8_t state) {
+  auto& cache = thumbnailCache();
+  if (auto* existing = findThumbnailCacheRecord(bookPath, sourceCoverPath, width, height)) {
+    existing->thumbPath = thumbPath;
+    existing->state = state;
+    return;
+  }
+  constexpr size_t kMaxThumbnailCacheRecords = 96;
+  if (cache.size() >= kMaxThumbnailCacheRecords) {
+    cache.erase(cache.begin());
+  }
+  cache.push_back(ThumbnailCacheRecord{bookPath, sourceCoverPath, thumbPath, width, height, state});
+}
+
 const uint8_t* fileIconBitmap(const std::string& filename) {
   if (!filename.empty() && filename.back() == '/') {
     return FolderIcon;
@@ -338,6 +386,8 @@ void FileBrowserActivity::loadFiles() {
   entryTitles.clear();
   entrySubtitles.clear();
   entryCoverPaths.clear();
+  entryCoverSourcePaths.clear();
+  entryCoverStates.clear();
 
   if (isBookshelfMode() && basepath == "/" && libraryView == 0) {
     libraryView = LIBRARY_VIEW_DASHBOARD;
@@ -426,7 +476,7 @@ void FileBrowserActivity::loadFilesystemFiles() {
       entryPaths.push_back(fullPathPrefix + entry);
       entryTitles.push_back(getFileName(entry));
       entrySubtitles.emplace_back();
-      entryCoverPaths.emplace_back();
+      addEntryCoverPlaceholder();
       continue;
     }
 
@@ -457,7 +507,7 @@ void FileBrowserActivity::loadFilesystemFiles() {
     entryPaths.push_back(fullPath);
     entryTitles.push_back(getFileName(entry));
     entrySubtitles.emplace_back();
-    entryCoverPaths.emplace_back();
+    addEntryCoverPlaceholder();
   }
 }
 
@@ -496,7 +546,7 @@ void FileBrowserActivity::loadLibraryDashboard() {
     entryPaths.emplace_back();
     entryTitles.emplace_back(shelf.title);
     entrySubtitles.emplace_back(shelf.subtitle);
-    entryCoverPaths.emplace_back();
+    addEntryCoverPlaceholder();
   }
 
   auto root = Storage.open("/");
@@ -532,7 +582,7 @@ void FileBrowserActivity::loadLibraryDashboard() {
     entryPaths.push_back("/" + entry);
     entryTitles.push_back(getFileName(entry));
     entrySubtitles.emplace_back(isFolder ? "" : fileTypeLabel(entry));
-    entryCoverPaths.emplace_back();
+    addEntryCoverPlaceholder();
   }
 }
 
@@ -545,19 +595,11 @@ void FileBrowserActivity::addLibraryBook(const std::string& path, const std::str
 
   files.push_back(path);
   entryPaths.push_back(path);
-  std::string thumbPath;
+  addEntryCoverPlaceholder();
+  entryCoverSourcePaths.back() = coverPath;
   if (state != LIBRARY_STATE_FINISHED) {
-    RecentBook gridBook;
-    gridBook.path = path;
-    gridBook.title = title;
-    gridBook.author = author;
-    gridBook.coverBmpPath = coverPath;
-    thumbPath = RecentBooksGrid::resolveExistingCoverPath(gridBook);
-    if (thumbPath.empty()) {
-      thumbPath = RecentBooksGrid::loadSingleCover(renderer, gridBook);
-    }
+    resolveEntryCover(static_cast<int>(entryCoverPaths.size()) - 1, false);
   }
-  entryCoverPaths.push_back((!thumbPath.empty() && Storage.exists(thumbPath.c_str())) ? thumbPath : "");
   const size_t slash = path.find_last_of('/');
   const std::string fallbackName = slash == std::string::npos ? path : path.substr(slash + 1);
   entryTitles.push_back(title.empty() ? getFileName(fallbackName) : title);
@@ -607,6 +649,129 @@ void FileBrowserActivity::loadLibraryShelf(const uint8_t shelf) {
   }
 }
 
+void FileBrowserActivity::addEntryCoverPlaceholder() {
+  entryCoverPaths.emplace_back();
+  entryCoverSourcePaths.emplace_back();
+  entryCoverStates.push_back(ENTRY_COVER_UNKNOWN);
+}
+
+bool FileBrowserActivity::entryCanResolveCover(const int index) const {
+  if (index < 0 || index >= static_cast<int>(files.size()) || index >= static_cast<int>(entryPaths.size())) {
+    return false;
+  }
+  if (index < static_cast<int>(libraryFileStates.size()) && libraryFileStates[index] == LIBRARY_STATE_FINISHED) {
+    return false;
+  }
+
+  const std::string& entry = files[index];
+  if (entry.empty() || entry.back() == '/') {
+    return false;
+  }
+  if (!isLibraryShelf() && basepath == "/") {
+    return false;
+  }
+
+  const std::string& path = entryPaths[index];
+  return FsHelpers::hasEpubExtension(path) || FsHelpers::hasXtcExtension(path) || FsHelpers::hasTxtExtension(path) ||
+         FsHelpers::hasMarkdownExtension(path);
+}
+
+bool FileBrowserActivity::resolveEntryCover(const int index, const bool allowGeneration) {
+  if (!entryCanResolveCover(index) || index >= static_cast<int>(entryCoverPaths.size()) ||
+      index >= static_cast<int>(entryCoverSourcePaths.size()) || index >= static_cast<int>(entryCoverStates.size())) {
+    return false;
+  }
+  if (entryCoverStates[index] == ENTRY_COVER_READY || entryCoverStates[index] == ENTRY_COVER_MISSING) {
+    return false;
+  }
+
+  const std::string& path = entryPaths[index];
+  std::string sourceCoverPath = entryCoverSourcePaths[index];
+  if (sourceCoverPath.empty()) {
+    if (FsHelpers::hasEpubExtension(path)) {
+      sourceCoverPath = Epub(path, "/.crosspoint").getThumbBmpPath();
+    } else if (FsHelpers::hasXtcExtension(path)) {
+      sourceCoverPath = Xtc(path, "/.crosspoint").getThumbBmpPath();
+    }
+  }
+
+  if (auto* cached = findThumbnailCacheRecord(path, sourceCoverPath, SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT)) {
+    if (cached->state == ENTRY_COVER_READY && !cached->thumbPath.empty() && Storage.exists(cached->thumbPath.c_str())) {
+      entryCoverStates[index] = ENTRY_COVER_READY;
+      entryCoverPaths[index] = cached->thumbPath;
+      return true;
+    }
+    if (cached->state == ENTRY_COVER_READY) {
+      cached->state = ENTRY_COVER_UNKNOWN;
+      cached->thumbPath.clear();
+    } else {
+      entryCoverStates[index] = cached->state;
+      return false;
+    }
+  }
+
+  const std::string existingThumbPath =
+      UITheme::getCoverThumbPath(sourceCoverPath, SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT);
+  if (!existingThumbPath.empty() && Storage.exists(existingThumbPath.c_str())) {
+    entryCoverPaths[index] = existingThumbPath;
+    entryCoverSourcePaths[index] = sourceCoverPath;
+    entryCoverStates[index] = ENTRY_COVER_READY;
+    rememberThumbnailCacheRecord(path, sourceCoverPath, existingThumbPath, SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT,
+                                 ENTRY_COVER_READY);
+    return true;
+  }
+
+  if (!allowGeneration) {
+    return false;
+  }
+
+  std::string generatedThumbPath;
+  if (FsHelpers::hasEpubExtension(path)) {
+    Epub epub(path, "/.crosspoint");
+    if (epub.load(false, true) && epub.generateThumbBmp(SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT)) {
+      sourceCoverPath = epub.getThumbBmpPath();
+      generatedThumbPath = epub.getThumbBmpPath(SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT);
+    }
+  } else if (FsHelpers::hasXtcExtension(path)) {
+    Xtc xtc(path, "/.crosspoint");
+    if (xtc.load() && xtc.generateThumbBmp(SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT)) {
+      sourceCoverPath = xtc.getThumbBmpPath();
+      generatedThumbPath = xtc.getThumbBmpPath(SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT);
+    }
+  }
+
+  if (!generatedThumbPath.empty() && Storage.exists(generatedThumbPath.c_str())) {
+    entryCoverPaths[index] = generatedThumbPath;
+    entryCoverSourcePaths[index] = sourceCoverPath;
+    entryCoverStates[index] = ENTRY_COVER_READY;
+    rememberThumbnailCacheRecord(path, sourceCoverPath, generatedThumbPath, SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT,
+                                 ENTRY_COVER_READY);
+    return true;
+  }
+
+  entryCoverStates[index] = ENTRY_COVER_MISSING;
+  rememberThumbnailCacheRecord(path, sourceCoverPath, "", SHELF_COVER_WIDTH, SHELF_COVER_HEIGHT, ENTRY_COVER_MISSING);
+  return false;
+}
+
+bool FileBrowserActivity::processVisibleCoverJob(const int pageItems) {
+  if (!isBookshelfMode() || isLibraryDashboard() || pageItems <= 0 || mappedInput.isAnyMappedButtonPressed()) {
+    return false;
+  }
+
+  const int pageStartIndex = (static_cast<int>(selectorIndex) / pageItems) * pageItems;
+  const int pageEndIndex = std::min(static_cast<int>(files.size()), pageStartIndex + pageItems);
+  for (int index = pageStartIndex; index < pageEndIndex; ++index) {
+    if (index < static_cast<int>(entryCoverStates.size()) && entryCoverStates[index] == ENTRY_COVER_UNKNOWN &&
+        entryCanResolveCover(index)) {
+      resolveEntryCover(index, true);
+      requestUpdate();
+      return true;
+    }
+  }
+  return false;
+}
+
 void FileBrowserActivity::onEnter() {
   Activity::onEnter();
 
@@ -651,6 +816,8 @@ void FileBrowserActivity::onExit() {
   entryTitles.clear();
   entrySubtitles.clear();
   entryCoverPaths.clear();
+  entryCoverSourcePaths.clear();
+  entryCoverStates.clear();
 }
 
 void FileBrowserActivity::clearFileMetadata(const std::string& fullPath) {
@@ -863,6 +1030,8 @@ void FileBrowserActivity::loop() {
       requestUpdate();
     });
   }
+
+  processVisibleCoverJob(pageItems);
 }
 
 void FileBrowserActivity::openBookActions(const size_t index) {
@@ -1193,9 +1362,8 @@ void FileBrowserActivity::renderBookshelf(const Rect& rect, const int pageItems)
       const int placeholderX = card.x + (card.width - placeholderWidth) / 2;
       const int placeholderY = inner.y;
       const Rect visualRect{placeholderX, placeholderY, placeholderWidth, placeholderHeight};
-      const bool coverDrawn =
-          coverShelf && index >= 0 && index < static_cast<int>(entryCoverPaths.size()) &&
-          drawCachedCover(renderer, entryCoverPaths[index], visualRect);
+      const bool shouldDrawCover = bookTile && index >= 0 && index < static_cast<int>(entryCoverPaths.size());
+      const bool coverDrawn = shouldDrawCover && drawCachedCover(renderer, entryCoverPaths[index], visualRect);
       if (!coverDrawn) {
         drawBookPlaceholder(renderer, visualRect, icon == Image24Icon);
       }

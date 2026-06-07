@@ -36,6 +36,8 @@ class FileBrowserActivity final : public Activity {
   std::vector<std::string> entryTitles;
   std::vector<std::string> entrySubtitles;
   std::vector<std::string> entryCoverPaths;
+  std::vector<std::string> entryCoverSourcePaths;
+  std::vector<uint8_t> entryCoverStates;
 
   // Data loading
   void loadFiles();
@@ -62,6 +64,10 @@ class FileBrowserActivity final : public Activity {
   void renderBookshelf(const Rect& rect, const int pageItems);
   void renderLibraryDashboard(const Rect& rect, const int pageItems);
   void renderPageIndicator(const Rect& rect, int pageItems) const;
+  void addEntryCoverPlaceholder();
+  bool entryCanResolveCover(int index) const;
+  bool resolveEntryCover(int index, bool allowGeneration);
+  bool processVisibleCoverJob(int pageItems);
   void openBookActions(size_t index);
   void handleBookAction(int action, const std::string& path, const std::string& title, const std::string& entry);
   void confirmDeleteFile(const std::string& fullPath, const std::string& label);
