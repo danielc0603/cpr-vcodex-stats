@@ -12,6 +12,25 @@ void safeCopy(char* dst, size_t dstSize, const char* src, size_t srcLen) {
   dst[n] = '\0';
 }
 
+bool isFirmwareReleaseTag(const char* tagName) {
+  if (tagName == nullptr || tagName[0] == '\0') {
+    return false;
+  }
+
+  bool hasDigit = false;
+  for (const char* cursor = tagName; *cursor; ++cursor) {
+    if (*cursor >= '0' && *cursor <= '9') {
+      hasDigit = true;
+      break;
+    }
+  }
+  if (!hasDigit) {
+    return false;
+  }
+
+  return strstr(tagName, "cpr-vcodex") != nullptr || strstr(tagName, "firmware") != nullptr;
+}
+
 }  // namespace
 
 ReleaseJsonParser::ReleaseJsonParser()
@@ -45,6 +64,13 @@ const char* ReleaseJsonParser::getFirmwareUrl() const { return firmwareUrl; }
 size_t ReleaseJsonParser::getFirmwareSize() const { return firmwareSize; }
 
 void ReleaseJsonParser::commitAsset() {
+  if (!isFirmwareReleaseTag(tagName)) {
+    currentAssetName[0] = '\0';
+    currentAssetUrl[0] = '\0';
+    currentAssetSize = 0;
+    return;
+  }
+
   char releaseAssetName[48];
   snprintf(releaseAssetName, sizeof(releaseAssetName), "%s.bin", tagName);
   const bool isReleaseAsset = tagFound && strcmp(currentAssetName, releaseAssetName) == 0;

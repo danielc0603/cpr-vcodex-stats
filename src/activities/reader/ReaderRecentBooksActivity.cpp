@@ -90,16 +90,16 @@ void ReaderRecentBooksActivity::loop() {
     loadVisiblePageMetadata();
     requestUpdate();
   };
-  buttonNavigator.onRelease({MappedInputManager::Button::Right}, [this, total, moveSelection] {
+  buttonNavigator.onPress({MappedInputManager::Button::Right}, [this, total, moveSelection] {
     moveSelection(RecentBooksGrid::moveHorizontal(selectedIndex, total, true));
   });
-  buttonNavigator.onRelease({MappedInputManager::Button::Left}, [this, total, moveSelection] {
+  buttonNavigator.onPress({MappedInputManager::Button::Left}, [this, total, moveSelection] {
     moveSelection(RecentBooksGrid::moveHorizontal(selectedIndex, total, false));
   });
-  buttonNavigator.onRelease({MappedInputManager::Button::Down}, [this, total, moveSelection] {
+  buttonNavigator.onPress({MappedInputManager::Button::Down}, [this, total, moveSelection] {
     moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, RecentBooksGrid::kQuickItemsPerPage, true));
   });
-  buttonNavigator.onRelease({MappedInputManager::Button::Up}, [this, total, moveSelection] {
+  buttonNavigator.onPress({MappedInputManager::Button::Up}, [this, total, moveSelection] {
     moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, RecentBooksGrid::kQuickItemsPerPage, false));
   });
   buttonNavigator.onContinuous({MappedInputManager::Button::Right}, [this, total, moveSelection] {

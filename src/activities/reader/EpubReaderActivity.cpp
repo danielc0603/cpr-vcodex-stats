@@ -253,6 +253,7 @@ void EpubReaderActivity::onEnter() {
   bookmarkStore.load(epub->getCachePath(), stableBookId);
 
   FsFile f;
+  bool loadedProgress = false;
   bool loadedFromLegacy = false;
   const std::string stableProgressPath = getStableProgressPath(stableBookId);
   const std::string legacyProgressPath = getLegacyProgressPath(*epub);
@@ -272,6 +273,7 @@ void EpubReaderActivity::onEnter() {
         nextPageNumber = 0;
       }
       cachedSpineIndex = currentSpineIndex;
+      loadedProgress = true;
       LOG_DBG("ERS", "Loaded cache: %d, %d", currentSpineIndex, nextPageNumber);
     }
     if (dataSize == 6) {
@@ -282,9 +284,8 @@ void EpubReaderActivity::onEnter() {
       saveProgress(currentSpineIndex, nextPageNumber, cachedChapterTotalPageCount);
     }
   }
-  // We may want a better condition to detect if we are opening for the first time.
-  // This will trigger if the book is re-opened at Chapter 0.
-  if (currentSpineIndex == 0) {
+  // Only apply the EPUB text reference on first open; a saved position in spine 0 is valid progress.
+  if (!loadedProgress && currentSpineIndex == 0) {
     int textSpineIndex = epub->getSpineIndexForTextReference();
     if (textSpineIndex != 0) {
       currentSpineIndex = textSpineIndex;
@@ -489,6 +490,7 @@ void EpubReaderActivity::loop() {
     backHoldPreviewVisible = false;
     waitingForConfirmSecondClick = false;
     firstConfirmClickMs = 0UL;
+    mappedInput.armPressedButtonsReleaseGuard();
     openRecentBooksSwitcher();
     return;
   }
@@ -883,9 +885,10 @@ void EpubReaderActivity::openRecentBooksSwitcher() {
                          [this](const ActivityResult& result) {
                            mappedInput.setReaderMode(true);
                            mappedInput.setReaderOrientation(activeReaderOrientation);
-                           backLongPressHandled = mappedInput.isPressed(MappedInputManager::Button::Back);
+                           mappedInput.armPressedButtonsReleaseGuard();
+                           backLongPressHandled = false;
                            backHoldPreviewVisible = false;
-                           confirmLongPressHandled = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+                           confirmLongPressHandled = false;
                            confirmHoldPreviewVisible = false;
                            waitingForConfirmSecondClick = false;
                            firstConfirmClickMs = 0UL;
@@ -1264,15 +1267,17 @@ void EpubReaderActivity::executeReaderQuickAction(CrossPointSettings::LONG_PRESS
       break;
     case CrossPointSettings::LONG_MENU_READING_STATS:
       if (epub) {
+        mappedInput.armPressedButtonsReleaseGuard();
         startActivityForResult(
             std::make_unique<ReadingStatsDetailActivity>(renderer, mappedInput, epub->getPath(),
                                                          ReadingStatsDetailContext{true}),
             [this](const ActivityResult&) {
               mappedInput.setReaderMode(true);
               mappedInput.setReaderOrientation(activeReaderOrientation);
-              backLongPressHandled = mappedInput.isPressed(MappedInputManager::Button::Back);
+              mappedInput.armPressedButtonsReleaseGuard();
+              backLongPressHandled = false;
               backHoldPreviewVisible = false;
-              confirmLongPressHandled = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+              confirmLongPressHandled = false;
               confirmHoldPreviewVisible = false;
               waitingForConfirmSecondClick = false;
               firstConfirmClickMs = 0UL;
@@ -1842,7 +1847,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // Font prewarm: scan pass accumulates text, then prewarm, then real render
   const uint32_t heapBefore = esp_get_free_heap_size();
   auto scope = fcm->createPrewarmScope();
-  page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop, SETTINGS.bionicReading);  // scan pass
+  page->recordFontUsage(*fcm, SETTINGS.getReaderFontId(), SETTINGS.bionicReading);
   scope.endScanAndPrewarm();
   const uint32_t heapAfter = esp_get_free_heap_size();
   fcm->logStats("prewarm");

@@ -18,3 +18,4 @@ build
 *.local*
 *.log
 /.codex-build/
+caption2md/

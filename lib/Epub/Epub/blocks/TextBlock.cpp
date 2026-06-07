@@ -1,5 +1,6 @@
 #include "TextBlock.h"
 
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
 #include <Serialization.h>
@@ -141,6 +142,29 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       }
 
       renderer.drawLine(startX, underlineY, startX + underlineWidth, underlineY, true);
+    }
+  }
+}
+
+void TextBlock::recordFontUsage(FontCacheManager& fontCacheManager, const int fontId,
+                                const uint8_t bionicReadingMode) const {
+  if (words.size() != wordStyles.size()) {
+    LOG_ERR("TXB", "Font usage skipped: size mismatch (words=%u, styles=%u)\n", (uint32_t)words.size(),
+            (uint32_t)wordStyles.size());
+    return;
+  }
+
+  const bool bionicEnabled =
+      bionicReadingMode == BIONIC_READING_NORMAL || bionicReadingMode == BIONIC_READING_SUBTLE;
+  for (size_t i = 0; i < words.size(); ++i) {
+    const EpdFontFamily::Style currentStyle = wordStyles[i];
+    const std::string& word = words[i];
+    fontCacheManager.recordText(word.c_str(), fontId, currentStyle);
+
+    if (bionicReadingMode == BIONIC_READING_NORMAL && bionicEnabled &&
+        (currentStyle & EpdFontFamily::BOLD) == 0 && word.size() < 128) {
+      const EpdFontFamily::Style boldStyle = static_cast<EpdFontFamily::Style>(currentStyle | EpdFontFamily::BOLD);
+      fontCacheManager.recordText(word.c_str(), fontId, boldStyle);
     }
   }
 }

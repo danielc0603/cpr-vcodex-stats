@@ -9,7 +9,6 @@
 #include <string>
 
 #include "AchievementsStore.h"
-#include "ReadingDateSelectionActivity.h"
 #include "ReadingStatsStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -18,11 +17,12 @@
 #include "util/TimeUtils.h"
 
 namespace {
-constexpr int FIELD_COUNT = 3;
+constexpr int FIELD_COUNT = 4;
 constexpr int OPERATION_COUNT = 2;
-constexpr int DURATION_COUNT = 4;
 constexpr int64_t MINUTES_TO_MS = 60LL * 1000LL;
-constexpr int DURATION_MINUTES[DURATION_COUNT] = {15, 30, 45, 60};
+constexpr int DURATION_MINUTES[] = {5, 10, 15, 20, 30, 45, 60, 90, 120};
+constexpr int DURATION_COUNT = sizeof(DURATION_MINUTES) / sizeof(DURATION_MINUTES[0]);
+constexpr int APPLY_FIELD_INDEX = FIELD_COUNT - 1;
 
 int wrapIndex(const int value, const int delta, const int count) {
   int next = value + delta;
@@ -38,7 +38,7 @@ void BookReadingAdjustmentActivity::onEnter() {
   Activity::onEnter();
   selectedField = 0;
   selectedOperation = 0;
-  selectedDuration = 1;
+  selectedDuration = 2;
   lastApplyFailed = false;
   initializeSelectedDate();
   requestUpdate();
@@ -49,10 +49,10 @@ void BookReadingAdjustmentActivity::adjustSelectedValue(const int delta) {
   if (selectedField == 0) {
     selectedOperation = wrapIndex(selectedOperation, delta, OPERATION_COUNT);
   } else if (selectedField == 1) {
-    if (selectedDayOrdinal != 0 || delta > 0) {
+    if (selectedDayOrdinal != 0) {
       selectedDayOrdinal = static_cast<uint32_t>(static_cast<int32_t>(selectedDayOrdinal) + delta);
     }
-  } else {
+  } else if (selectedField == 2) {
     selectedDuration = wrapIndex(selectedDuration, delta, DURATION_COUNT);
   }
   requestUpdate();
@@ -67,19 +67,6 @@ void BookReadingAdjustmentActivity::initializeSelectedDate() {
   }
 
   selectedDayOrdinal = TimeUtils::getLocalDayOrdinal(referenceTimestamp);
-}
-
-void BookReadingAdjustmentActivity::openDateSelection() {
-  startActivityForResult(std::make_unique<ReadingDateSelectionActivity>(renderer, mappedInput, selectedDayOrdinal),
-                         [this](const ActivityResult& result) {
-                           if (!result.isCancelled) {
-                             if (const auto* page = std::get_if<PageResult>(&result.data)) {
-                               selectedDayOrdinal = page->page;
-                               lastApplyFailed = false;
-                             }
-                           }
-                           requestUpdate();
-                         });
 }
 
 int32_t BookReadingAdjustmentActivity::getSelectedDeltaMs() const {
@@ -192,28 +179,18 @@ void BookReadingAdjustmentActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    if (selectedField == 1) {
-      openDateSelection();
-      return;
+    if (selectedField >= APPLY_FIELD_INDEX) {
+      applyAdjustment();
+    } else {
+      selectedField = ButtonNavigator::nextIndex(selectedField, FIELD_COUNT);
+      lastApplyFailed = false;
+      requestUpdate();
     }
-    applyAdjustment();
     return;
   }
 
-  buttonNavigator.onRelease({MappedInputManager::Button::Down}, [this] {
-    selectedField = ButtonNavigator::nextIndex(selectedField, FIELD_COUNT);
-    lastApplyFailed = false;
-    requestUpdate();
-  });
-
-  buttonNavigator.onRelease({MappedInputManager::Button::Up}, [this] {
-    selectedField = ButtonNavigator::previousIndex(selectedField, FIELD_COUNT);
-    lastApplyFailed = false;
-    requestUpdate();
-  });
-
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] { adjustSelectedValue(-1); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] { adjustSelectedValue(1); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this] { adjustSelectedValue(-1); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, [this] { adjustSelectedValue(1); });
 }
 
 void BookReadingAdjustmentActivity::render(RenderLock&&) {
@@ -234,19 +211,22 @@ void BookReadingAdjustmentActivity::render(RenderLock&&) {
       [](int index) {
         if (index == 0) return std::string(tr(STR_ACTION));
         if (index == 1) return std::string(tr(STR_DATE));
-        return std::string(tr(STR_AMOUNT));
+        if (index == 2) return std::string(tr(STR_AMOUNT));
+        return std::string(tr(STR_CONFIRM));
       },
       [this](int index) {
         if (index == 0) return std::string(getOperationLabel());
         if (index == 1) return getDateLabel();
-        return std::string(getDurationLabel());
+        if (index == 2) return std::string(getDurationLabel());
+        return canApplySelectedAdjustment() ? std::string(tr(STR_SELECT_APPLIES_CORRECTION))
+                                            : std::string(tr(STR_COULD_NOT_APPLY_CORRECTION));
       },
       [](int index) { return index == 0 ? UIIcon::Settings : UIIcon::Recent; }, nullptr, false);
 
   const int infoTop = contentTop + listHeight + metrics.verticalSpacing;
   const int infoWidth = pageWidth - sidePadding * 2;
   std::string info = getAdjustmentPreviewInfo();
-  std::string hint = selectedField == 1 ? tr(STR_SELECT_OPENS_DATE_PICKER) : tr(STR_SELECT_APPLIES_CORRECTION);
+  std::string hint = selectedField == APPLY_FIELD_INDEX ? tr(STR_SELECT_APPLIES_CORRECTION) : tr(STR_SELECT);
   if (lastApplyFailed) {
     hint = tr(STR_COULD_NOT_APPLY_CORRECTION);
   } else if (!canApplySelectedAdjustment()) {
@@ -257,8 +237,7 @@ void BookReadingAdjustmentActivity::render(RenderLock&&) {
   const std::string shortHint = renderer.truncatedText(UI_10_FONT_ID, hint.c_str(), infoWidth);
   renderer.drawText(UI_10_FONT_ID, sidePadding, infoTop + renderer.getLineHeight(UI_10_FONT_ID), shortHint.c_str());
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), selectedField == 1 ? tr(STR_SELECT) : tr(STR_CONFIRM),
-                                            tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }

@@ -45,11 +45,6 @@ constexpr unsigned long HOLD_PREVIEW_MS = 250;
 constexpr int HOME_SHORTCUT_PAGE_SIZE = 4;
 constexpr int LYRA_VCODEX2_COMPACT_DASHBOARD_HEIGHT = 286;
 
-struct HomeShortcutEntry {
-  const ShortcutDefinition* definition = nullptr;
-  bool isAppsHub = false;
-};
-
 std::string getRecentBookConfirmationLabel(const RecentBook& book) {
   return !book.title.empty() ? book.title : book.path;
 }
@@ -68,9 +63,11 @@ std::string fallbackTitleFromPath(const std::string& path) {
   return filename;
 }
 
+UIIcon getHomeShortcutIcon(const HomeShortcutEntry& entry);
+
 std::vector<HomeShortcutEntry> getHomeShortcutEntries(const bool hasOpdsServers) {
   std::vector<HomeShortcutEntry> entries;
-  entries.push_back(HomeShortcutEntry{nullptr, true});
+  entries.push_back(HomeShortcutEntry{nullptr, true, tr(STR_APPS), "", UIIcon::Apps, false});
 
   for (const auto& definition : getShortcutDefinitions()) {
     if (definition.id == ShortcutId::OpdsBrowser && !hasOpdsServers) {
@@ -78,7 +75,12 @@ std::vector<HomeShortcutEntry> getHomeShortcutEntries(const bool hasOpdsServers)
     }
     const auto location = static_cast<CrossPointSettings::SHORTCUT_LOCATION>(SETTINGS.*(definition.locationPtr));
     if (location == CrossPointSettings::SHORTCUT_HOME && getShortcutVisibility(definition)) {
-      entries.push_back(HomeShortcutEntry{&definition});
+      entries.push_back(HomeShortcutEntry{&definition,
+                                          false,
+                                          I18N.get(definition.nameId),
+                                          ShortcutUiMetadata::getSubtitle(definition),
+                                          definition.icon,
+                                          ShortcutUiMetadata::showAccessory(definition)});
     }
   }
 
@@ -92,28 +94,19 @@ std::vector<HomeShortcutEntry> getHomeShortcutEntries(const bool hasOpdsServers)
 }
 
 std::string getHomeShortcutTitle(const HomeShortcutEntry& entry) {
-  if (entry.isAppsHub) {
-    return tr(STR_APPS);
-  }
-  if (!entry.definition) {
-    return "";
-  }
-  return I18N.get(entry.definition->nameId);
+  return entry.title;
 }
 
 std::string getHomeShortcutSubtitle(const HomeShortcutEntry& entry) {
-  return entry.definition ? ShortcutUiMetadata::getSubtitle(*entry.definition) : "";
+  return entry.subtitle;
 }
 
 UIIcon getHomeShortcutIcon(const HomeShortcutEntry& entry) {
-  if (entry.isAppsHub) {
-    return UIIcon::Apps;
-  }
-  return entry.definition ? entry.definition->icon : UIIcon::Folder;
+  return static_cast<UIIcon>(entry.icon);
 }
 
 bool showHomeShortcutAccessory(const HomeShortcutEntry& entry) {
-  return entry.definition && ShortcutUiMetadata::showAccessory(*entry.definition);
+  return entry.accessory;
 }
 
 void drawHoldPreview(GfxRenderer& renderer, const std::string& text) {
@@ -147,8 +140,7 @@ void drawHoldPreview(GfxRenderer& renderer, const std::string& text) {
 }  // namespace
 
 int HomeActivity::getMenuItemCount() const {
-  auto entries = getHomeShortcutEntries(hasOpdsServers);
-  return static_cast<int>(recentBooks.size()) + static_cast<int>(entries.size());
+  return static_cast<int>(recentBooks.size()) + static_cast<int>(homeShortcutEntries.size());
 }
 
 int HomeActivity::getRecentBookLoadCount() const {
@@ -170,13 +162,17 @@ int HomeActivity::getDashboardHeight() const {
 void HomeActivity::loadRecentBooks(const int maxBooks) {
   recentBooks.clear();
   const auto& books = RECENT_BOOKS.getBooks();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int preferredCoverHeight = std::max(1, metrics.homeCoverHeight);
+  const int preferredCoverWidth = static_cast<int>((static_cast<int64_t>(preferredCoverHeight) * 3 + 2) / 5);
   recentBooks.reserve(std::min(static_cast<int>(books.size()), maxBooks));
   bool repairedDisplayMetadata = false;
   const bool prioritizeCurrentBook =
       SETTINGS.uiTheme == CrossPointSettings::LYRA_VCODEX2 && SETTINGS.showCurrentBookCard != 0 &&
       !APP_STATE.openEpubPath.empty();
 
-  auto appendResolvedBook = [this, maxBooks, &repairedDisplayMetadata](const RecentBook& book) {
+  auto appendResolvedBook =
+      [this, maxBooks, preferredCoverWidth, preferredCoverHeight, &repairedDisplayMetadata](const RecentBook& book) {
     if (static_cast<int>(recentBooks.size()) >= maxBooks || !Storage.exists(book.path.c_str())) {
       return;
     }
@@ -208,6 +204,12 @@ void HomeActivity::loadRecentBooks(const int maxBooks) {
     if (resolvedBook.title.empty()) {
       resolvedBook.title = fallbackTitleFromPath(resolvedBook.path);
       repairedDisplayMetadata = true;
+    }
+    const std::string resolvedCoverPath =
+        UITheme::resolveBookCoverThumbPath(resolvedBook.path, resolvedBook.coverBmpPath, preferredCoverWidth,
+                                           preferredCoverHeight);
+    if (!resolvedCoverPath.empty()) {
+      resolvedBook.coverBmpPath = resolvedCoverPath;
     }
     recentBooks.push_back(resolvedBook);
   };
@@ -261,6 +263,7 @@ void HomeActivity::onEnter() {
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(getRecentBookLoadCount());
+  rebuildHomeShortcutEntries();
   recentsLoaded = !needsRecentCoverLoad(metrics.homeCoverHeight);
 
   requestUpdate();
@@ -310,22 +313,35 @@ void HomeActivity::freeCoverBuffer() {
     coverBuffer = nullptr;
   }
   coverBufferStored = false;
+  coverBufferSelectionState = -99;
+}
+
+int HomeActivity::getDashboardSelectionState() const {
+  if (selectorIndex >= 0 && selectorIndex < static_cast<int>(recentBooks.size())) {
+    return selectorIndex;
+  }
+  return -1;
 }
 
 void HomeActivity::loop() {
   const int menuCount = getMenuItemCount();
-  auto homeEntries = getHomeShortcutEntries(hasOpdsServers);
   const int recentCount = static_cast<int>(recentBooks.size());
-  const int homeCount = static_cast<int>(homeEntries.size());
+  const int homeCount = static_cast<int>(homeShortcutEntries.size());
 
   buttonNavigator.onNextPress([this, menuCount] {
-    selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
-    requestUpdate();
+    const int nextIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
+    if (nextIndex != selectorIndex) {
+      selectorIndex = nextIndex;
+      requestUpdate();
+    }
   });
 
   buttonNavigator.onPreviousPress([this, menuCount] {
-    selectorIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
-    requestUpdate();
+    const int nextIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
+    if (nextIndex != selectorIndex) {
+      selectorIndex = nextIndex;
+      requestUpdate();
+    }
   });
 
   buttonNavigator.onNextContinuous([this, menuCount, recentCount, homeCount] {
@@ -333,6 +349,7 @@ void HomeActivity::loop() {
       return;
     }
 
+    const int previousIndex = selectorIndex;
     if (homeCount <= HOME_SHORTCUT_PAGE_SIZE) {
       selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
     } else if (selectorIndex < recentCount) {
@@ -342,7 +359,9 @@ void HomeActivity::loop() {
       selectorIndex =
           recentCount + ButtonNavigator::nextPageIndex(selectedHomeIndex, homeCount, HOME_SHORTCUT_PAGE_SIZE);
     }
-    requestUpdate();
+    if (selectorIndex != previousIndex) {
+      requestUpdate();
+    }
   });
 
   buttonNavigator.onPreviousContinuous([this, menuCount, recentCount, homeCount] {
@@ -350,6 +369,7 @@ void HomeActivity::loop() {
       return;
     }
 
+    const int previousIndex = selectorIndex;
     if (homeCount <= HOME_SHORTCUT_PAGE_SIZE) {
       selectorIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
     } else if (selectorIndex < recentCount) {
@@ -359,7 +379,9 @@ void HomeActivity::loop() {
       selectorIndex =
           recentCount + ButtonNavigator::previousPageIndex(selectedHomeIndex, homeCount, HOME_SHORTCUT_PAGE_SIZE);
     }
-    requestUpdate();
+    if (selectorIndex != previousIndex) {
+      requestUpdate();
+    }
   });
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
@@ -381,11 +403,13 @@ void HomeActivity::loop() {
                                            SETTINGS.showCurrentBookCard != 0 && selectorIndex == 1;
     if (recentBooksAccessSelected) {
       if (recentBooks.size() > 1 && Storage.exists(recentBooks[1].path.c_str())) {
+        mappedInput.armPressedButtonsReleaseGuard();
         onSelectBook(recentBooks[1].path);
       }
       return;
     }
 
+    mappedInput.armPressedButtonsReleaseGuard();
     requestRemoveRecentBook(selectorIndex);
     return;
   }
@@ -412,11 +436,11 @@ void HomeActivity::loop() {
     }
 
     const int homeIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    if (homeIndex < 0 || homeIndex >= static_cast<int>(homeEntries.size())) {
+    if (homeIndex < 0 || homeIndex >= static_cast<int>(homeShortcutEntries.size())) {
       return;
     }
 
-    const auto& selectedEntry = homeEntries[homeIndex];
+    const auto& selectedEntry = homeShortcutEntries[homeIndex];
     if (selectedEntry.isAppsHub) {
       onAppsOpen();
     } else if (selectedEntry.definition) {
@@ -508,22 +532,29 @@ void HomeActivity::requestRemoveRecentBook(const int recentIndex) {
       });
 }
 
+void HomeActivity::rebuildHomeShortcutEntries() { homeShortcutEntries = getHomeShortcutEntries(hasOpdsServers); }
+
 void HomeActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   renderer.clearScreen();
-  bool bufferRestored = coverBufferStored && restoreCoverBuffer();
+  const int dashboardSelectionState = getDashboardSelectionState();
+  bool bufferRestored = coverBufferStored && coverBufferSelectionState == dashboardSelectionState && restoreCoverBuffer();
   const int dashboardHeight = getDashboardHeight();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr, nullptr);
-  HeaderDateUtils::drawTopLine(renderer, HeaderDateUtils::getDisplayDateText());
+  if (!bufferRestored) {
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr, nullptr);
+    HeaderDateUtils::drawTopLine(renderer, HeaderDateUtils::getDisplayDateText());
 
-  GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, dashboardHeight},
-                          recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
-                          std::bind(&HomeActivity::storeCoverBuffer, this));
+    GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, dashboardHeight},
+                            recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
+                            std::bind(&HomeActivity::storeCoverBuffer, this));
+    coverBufferStored = storeCoverBuffer();
+    coverBufferSelectionState = coverBufferStored ? dashboardSelectionState : -99;
+    coverRendered = coverBufferStored;
+  }
 
-  auto homeEntries = getHomeShortcutEntries(hasOpdsServers);
   const int selectedHomeIndex = selectorIndex - static_cast<int>(recentBooks.size());
   const Rect shortcutsRect{
       0, metrics.homeTopPadding + dashboardHeight + metrics.verticalSpacing, pageWidth,
@@ -531,29 +562,29 @@ void HomeActivity::render(RenderLock&&) {
                     metrics.buttonHintsHeight + metrics.verticalSpacing)};
   const Rect menuRect = shortcutsRect;
 
-  const int shortcutDisplayCount = static_cast<int>(homeEntries.size());
+  const int shortcutDisplayCount = static_cast<int>(homeShortcutEntries.size());
 
   if (shortcutDisplayCount <= HOME_SHORTCUT_PAGE_SIZE) {
     GUI.drawButtonMenu(
         renderer, menuRect, shortcutDisplayCount, selectedHomeIndex,
-        [&homeEntries](const int index) { return getHomeShortcutTitle(homeEntries[index]); },
-        [&homeEntries](const int index) { return getHomeShortcutIcon(homeEntries[index]); },
-        [&homeEntries](const int index) { return getHomeShortcutSubtitle(homeEntries[index]); },
-        [&homeEntries](const int index) { return showHomeShortcutAccessory(homeEntries[index]); });
+        [this](const int index) { return getHomeShortcutTitle(homeShortcutEntries[index]); },
+        [this](const int index) { return getHomeShortcutIcon(homeShortcutEntries[index]); },
+        [this](const int index) { return getHomeShortcutSubtitle(homeShortcutEntries[index]); },
+        [this](const int index) { return showHomeShortcutAccessory(homeShortcutEntries[index]); });
   } else {
     const int headerHeight = 34;
     const int listTop = menuRect.y + headerHeight + 12;
     const int listHeight = std::max(0, menuRect.height - headerHeight - 12);
     const int currentPage = std::max(0, selectedHomeIndex >= 0 ? selectedHomeIndex / HOME_SHORTCUT_PAGE_SIZE : 0);
     const int totalPages =
-        (static_cast<int>(homeEntries.size()) + HOME_SHORTCUT_PAGE_SIZE - 1) / HOME_SHORTCUT_PAGE_SIZE;
+        (static_cast<int>(homeShortcutEntries.size()) + HOME_SHORTCUT_PAGE_SIZE - 1) / HOME_SHORTCUT_PAGE_SIZE;
     const int pageStart = currentPage * HOME_SHORTCUT_PAGE_SIZE;
-    const int pageItemCount = std::min(HOME_SHORTCUT_PAGE_SIZE, static_cast<int>(homeEntries.size()) - pageStart);
+    const int pageItemCount = std::min(HOME_SHORTCUT_PAGE_SIZE, static_cast<int>(homeShortcutEntries.size()) - pageStart);
     const int localSelectedIndex = (selectedHomeIndex >= pageStart && selectedHomeIndex < pageStart + pageItemCount)
                                        ? selectedHomeIndex - pageStart
                                        : -1;
     const std::string sectionLabel =
-        std::string(tr(STR_SHORTCUTS_SECTION)) + " (" + std::to_string(homeEntries.size()) + ")";
+        std::string(tr(STR_SHORTCUTS_SECTION)) + " (" + std::to_string(homeShortcutEntries.size()) + ")";
     const std::string pageLabel = std::to_string(currentPage + 1) + "/" + std::to_string(totalPages);
 
     GUI.drawSubHeader(
@@ -562,11 +593,11 @@ void HomeActivity::render(RenderLock&&) {
         sectionLabel.c_str(), pageLabel.c_str());
     GUI.drawButtonMenu(
         renderer, Rect{0, listTop, pageWidth, listHeight}, pageItemCount, localSelectedIndex,
-        [&homeEntries, pageStart](const int index) { return getHomeShortcutTitle(homeEntries[pageStart + index]); },
-        [&homeEntries, pageStart](const int index) { return getHomeShortcutIcon(homeEntries[pageStart + index]); },
-        [&homeEntries, pageStart](const int index) { return getHomeShortcutSubtitle(homeEntries[pageStart + index]); },
-        [&homeEntries, pageStart](const int index) {
-          return showHomeShortcutAccessory(homeEntries[pageStart + index]);
+        [this, pageStart](const int index) { return getHomeShortcutTitle(homeShortcutEntries[pageStart + index]); },
+        [this, pageStart](const int index) { return getHomeShortcutIcon(homeShortcutEntries[pageStart + index]); },
+        [this, pageStart](const int index) { return getHomeShortcutSubtitle(homeShortcutEntries[pageStart + index]); },
+        [this, pageStart](const int index) {
+          return showHomeShortcutAccessory(homeShortcutEntries[pageStart + index]);
         });
   }
 

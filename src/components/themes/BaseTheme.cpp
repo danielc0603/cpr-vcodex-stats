@@ -470,6 +470,7 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
           LOG_DBG("THEME", "Rendering bmp");
 
           // Draw the cover image (bookWidth and bookHeight already match image aspect ratio)
+          renderer.fillRect(bookX, bookY, bookWidth, bookHeight, false);
           renderer.drawBitmap(bitmap, bookX, bookY, bookWidth, bookHeight);
 
           // Draw border around the card

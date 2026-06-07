@@ -115,7 +115,20 @@ std::string sanitizeBackLabel(const char* label) {
 }
 }  // namespace
 
-bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
+void MappedInputManager::update() const {
+  gpio.update();
+  if (suppressRawUntilReleaseMask == 0) {
+    return;
+  }
+  for (uint8_t raw = HalGPIO::BTN_BACK; raw <= HalGPIO::BTN_POWER; ++raw) {
+    const uint16_t mask = rawButtonMask(raw);
+    if ((suppressRawUntilReleaseMask & mask) != 0 && !gpio.isPressed(raw)) {
+      suppressRawUntilReleaseMask &= ~mask;
+    }
+  }
+}
+
+uint8_t MappedInputManager::rawButtonFor(const Button button) const {
   const auto sideLayout = static_cast<CrossPointSettings::SIDE_BUTTON_LAYOUT>(SETTINGS.sideButtonLayout);
   const auto side = mapSideLayoutForReaderOrientation(kSideLayouts[sideLayout], readerMode, readerOrientation);
   const bool useReaderMapping = readerMode && SETTINGS.readerFrontButtonsEnabled;
@@ -133,52 +146,121 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
 
   switch (button) {
     case Button::Back:
-      return (gpio.*fn)(mappedBack);
+      return mappedBack;
     case Button::Confirm:
-      return (gpio.*fn)(mappedConfirm);
+      return mappedConfirm;
     case Button::Left:
-      return (gpio.*fn)(mappedLeft);
+      return mappedLeft;
     case Button::Right:
-      return (gpio.*fn)(mappedRight);
+      return mappedRight;
     case Button::Up:
-      // Side buttons remain fixed for Up/Down.
-      return (gpio.*fn)(HalGPIO::BTN_UP);
+      return HalGPIO::BTN_UP;
     case Button::Down:
-      // Side buttons remain fixed for Up/Down.
-      return (gpio.*fn)(HalGPIO::BTN_DOWN);
+      return HalGPIO::BTN_DOWN;
     case Button::Power:
-      // Power button bypasses remapping.
-      return (gpio.*fn)(HalGPIO::BTN_POWER);
+      return HalGPIO::BTN_POWER;
     case Button::PageBack:
-      // Reader page navigation uses side buttons and can be swapped via settings.
-      return (gpio.*fn)(side.pageBack);
+      return side.pageBack;
     case Button::PageForward:
-      // Reader page navigation uses side buttons and can be swapped via settings.
-      return (gpio.*fn)(side.pageForward);
+      return side.pageForward;
   }
 
+  return HalGPIO::BTN_POWER;
+}
+
+bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
+  return (gpio.*fn)(rawButtonFor(button));
+}
+
+uint16_t MappedInputManager::rawButtonMask(const uint8_t rawButton) {
+  return static_cast<uint16_t>(1U << rawButton);
+}
+
+void MappedInputManager::armConfirmReleaseGuard() const {
+  suppressRawUntilReleaseMask |= rawButtonMask(rawButtonFor(Button::Confirm));
+}
+
+void MappedInputManager::armPressedButtonsReleaseGuard() const {
+  for (uint8_t raw = HalGPIO::BTN_BACK; raw <= HalGPIO::BTN_POWER; ++raw) {
+    if (gpio.isPressed(raw)) {
+      suppressRawUntilReleaseMask |= rawButtonMask(raw);
+    }
+  }
+}
+
+bool MappedInputManager::isSuppressedUntilRelease(const Button button) const {
+  const uint8_t rawButton = rawButtonFor(button);
+  const uint16_t mask = rawButtonMask(rawButton);
+  if ((suppressRawUntilReleaseMask & mask) == 0) {
+    return false;
+  }
+  if (!gpio.isPressed(rawButton)) {
+    suppressRawUntilReleaseMask &= ~mask;
+    return false;
+  }
+  return true;
+}
+
+bool MappedInputManager::hasSuppressedRawButtonHeld() const {
+  if (suppressRawUntilReleaseMask == 0) {
+    return false;
+  }
+  for (uint8_t raw = HalGPIO::BTN_BACK; raw <= HalGPIO::BTN_POWER; ++raw) {
+    const uint16_t mask = rawButtonMask(raw);
+    if ((suppressRawUntilReleaseMask & mask) == 0) {
+      continue;
+    }
+    if (gpio.isPressed(raw)) {
+      return true;
+    }
+    suppressRawUntilReleaseMask &= ~mask;
+  }
   return false;
 }
 
-bool MappedInputManager::wasPressed(const Button button) const { return mapButton(button, &HalGPIO::wasPressed); }
+bool MappedInputManager::consumeSuppressedRawInput() const {
+  if (suppressRawUntilReleaseMask == 0) {
+    return false;
+  }
+  bool consumed = false;
+  for (uint8_t raw = HalGPIO::BTN_BACK; raw <= HalGPIO::BTN_POWER; ++raw) {
+    const uint16_t mask = rawButtonMask(raw);
+    if ((suppressRawUntilReleaseMask & mask) == 0) {
+      continue;
+    }
+    if (gpio.isPressed(raw) || gpio.wasReleased(raw)) {
+      consumed = true;
+    }
+    if (!gpio.isPressed(raw)) {
+      suppressRawUntilReleaseMask &= ~mask;
+    }
+  }
+  return consumed;
+}
 
-void MappedInputManager::armConfirmReleaseGuard() const { suppressConfirmReleaseUntilButtonUp = true; }
+bool MappedInputManager::wasPressed(const Button button) const {
+  return !isSuppressedUntilRelease(button) && mapButton(button, &HalGPIO::wasPressed);
+}
 
 bool MappedInputManager::wasReleased(const Button button) const {
-  if (button == Button::Confirm && suppressConfirmReleaseUntilButtonUp) {
-    if (!isPressed(Button::Confirm)) {
-      suppressConfirmReleaseUntilButtonUp = false;
+  const uint8_t rawButton = rawButtonFor(button);
+  const uint16_t mask = rawButtonMask(rawButton);
+  if ((suppressRawUntilReleaseMask & mask) != 0) {
+    if (!gpio.isPressed(rawButton)) {
+      suppressRawUntilReleaseMask &= ~mask;
     }
     return false;
   }
-  return mapButton(button, &HalGPIO::wasReleased);
+  return gpio.wasReleased(rawButton);
 }
 
-bool MappedInputManager::isPressed(const Button button) const { return mapButton(button, &HalGPIO::isPressed); }
+bool MappedInputManager::isPressed(const Button button) const {
+  return !isSuppressedUntilRelease(button) && mapButton(button, &HalGPIO::isPressed);
+}
 
-bool MappedInputManager::wasAnyPressed() const { return gpio.wasAnyPressed(); }
+bool MappedInputManager::wasAnyPressed() const { return !consumeSuppressedRawInput() && gpio.wasAnyPressed(); }
 
-bool MappedInputManager::wasAnyReleased() const { return gpio.wasAnyReleased(); }
+bool MappedInputManager::wasAnyReleased() const { return !consumeSuppressedRawInput() && gpio.wasAnyReleased(); }
 
 bool MappedInputManager::isAnyMappedButtonPressed() const {
   return isPressed(Button::Back) || isPressed(Button::Confirm) || isPressed(Button::Left) ||
@@ -186,7 +268,7 @@ bool MappedInputManager::isAnyMappedButtonPressed() const {
          isPressed(Button::Power) || isPressed(Button::PageBack) || isPressed(Button::PageForward);
 }
 
-unsigned long MappedInputManager::getHeldTime() const { return gpio.getHeldTime(); }
+unsigned long MappedInputManager::getHeldTime() const { return hasSuppressedRawButtonHeld() ? 0UL : gpio.getHeldTime(); }
 
 MappedInputManager::Labels MappedInputManager::mapLabels(const char* back, const char* confirm, const char* previous,
                                                          const char* next) const {

@@ -10,6 +10,16 @@
 
 struct RecentBook;
 struct Rect;
+struct ShortcutDefinition;
+
+struct HomeShortcutEntry {
+  const ShortcutDefinition* definition = nullptr;
+  bool isAppsHub = false;
+  std::string title;
+  std::string subtitle;
+  int icon = 0;
+  bool accessory = false;
+};
 
 class HomeActivity final : public Activity {
   ButtonNavigator buttonNavigator;
@@ -22,8 +32,10 @@ class HomeActivity final : public Activity {
   bool holdPreviewVisible = false;
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored
+  int coverBufferSelectionState = -99;
   uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
   std::vector<RecentBook> recentBooks;
+  std::vector<HomeShortcutEntry> homeShortcutEntries;
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onAppsOpen();
@@ -32,6 +44,7 @@ class HomeActivity final : public Activity {
   void onOpdsBrowserOpen();
 
   int getMenuItemCount() const;
+  void rebuildHomeShortcutEntries();
   bool storeCoverBuffer();    // Store frame buffer for cover image
   bool restoreCoverBuffer();  // Restore frame buffer from stored cover
   void freeCoverBuffer();     // Free the stored cover buffer
@@ -41,6 +54,7 @@ class HomeActivity final : public Activity {
   void requestRemoveRecentBook(int recentIndex);
   int getRecentBookLoadCount() const;
   int getDashboardHeight() const;
+  int getDashboardSelectionState() const;
 
  public:
   explicit HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

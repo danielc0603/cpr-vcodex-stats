@@ -87,4 +87,5 @@ class FontSelectionActivity final : public Activity {
   size_t downloadProgress_ = 0;
   size_t downloadTotal_ = 0;
   int selectedIndex_ = 0;
+  bool readingStatsReleasedForNetwork_ = false;
 };

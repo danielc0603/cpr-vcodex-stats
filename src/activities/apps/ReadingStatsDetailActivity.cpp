@@ -399,9 +399,7 @@ void drawInvertedBitmapCover(GfxRenderer& renderer, const Bitmap& bitmap, const 
       const uint8_t val = 3 - sourceVal;
       const bool drawBlack = val == 0 || (val == 1 && ((screenX + screenY) & 1) == 0) ||
                              (val == 2 && (screenX & 1) == 0 && (screenY & 1) == 0);
-      if (drawBlack) {
-        renderer.drawPixel(screenX, screenY, true);
-      }
+      renderer.drawPixel(screenX, screenY, drawBlack);
     }
   }
 
@@ -435,6 +433,7 @@ void drawCover(GfxRenderer& renderer, const Rect& rect, const std::string& cover
     renderer.drawText(UI_10_FONT_ID, textX, textY, label, true, EpdFontFamily::BOLD);
   };
 
+  renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
   renderer.drawRect(rect.x, rect.y, rect.width, rect.height);
   if (coverPath.empty()) {
     drawFallback();
@@ -451,6 +450,7 @@ void drawCover(GfxRenderer& renderer, const Rect& rect, const std::string& cover
   if (bitmap.parseHeaders() == BmpReaderError::Ok) {
     const Rect frame = coverFrameForRatio(rect, std::max(1, bitmap.getWidth()), std::max(1, bitmap.getHeight()));
     const CoverToneAnalysis analysis = analyzeCoverTone(bitmap);
+    renderer.fillRect(frame.x, frame.y, frame.width, frame.height, false);
     if (analysis.shouldInvert()) {
       drawInvertedBitmapCover(renderer, bitmap, frame);
     } else {
@@ -585,15 +585,15 @@ void ReadingStatsDetailActivity::openAdjustment() {
 
 void ReadingStatsDetailActivity::guardChildReturn() {
   invalidateBaseScreenBuffer();
-  waitForBackRelease = true;
-  waitForConfirmRelease = true;
+  mappedInput.armPressedButtonsReleaseGuard();
+  waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back);
+  waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   confirmLongPressHandled = false;
 }
 
 void ReadingStatsDetailActivity::loop() {
   if (waitForBackRelease) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Back) &&
-        !mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Back)) {
       waitForBackRelease = false;
     }
     return;
@@ -605,8 +605,7 @@ void ReadingStatsDetailActivity::loop() {
   }
 
   if (waitForConfirmRelease) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
-        !mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
       waitForConfirmRelease = false;
     }
     return;
@@ -628,6 +627,7 @@ void ReadingStatsDetailActivity::loop() {
       mappedInput.getHeldTime() >= ADJUST_READING_TIME_LONG_PRESS_MS) {
     confirmLongPressHandled = true;
     holdPreviewVisible = false;
+    mappedInput.armPressedButtonsReleaseGuard();
     openAdjustment();
     return;
   }

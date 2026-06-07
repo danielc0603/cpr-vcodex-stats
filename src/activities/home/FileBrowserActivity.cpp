@@ -709,6 +709,7 @@ void FileBrowserActivity::loop() {
       !confirmLongPressHandled && mappedInput.getHeldTime() >= BOOK_ACTION_HOLD_MS) {
     confirmLongPressHandled = true;
     holdPreviewVisible = false;
+    mappedInput.armPressedButtonsReleaseGuard();
     openBookActions(selectorIndex);
     return;
   }
@@ -838,13 +839,13 @@ void FileBrowserActivity::loop() {
     buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, [this] { moveBookshelfVertical(1); });
     buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this] { moveBookshelfVertical(-1); });
   } else {
-    buttonNavigator.onNextRelease([this, listSize] {
+    buttonNavigator.onNextPress([this, listSize] {
       selectorIndex = ButtonNavigator::nextIndex(static_cast<int>(selectorIndex), listSize);
       clampSelector();
       requestUpdate();
     });
 
-    buttonNavigator.onPreviousRelease([this, listSize] {
+    buttonNavigator.onPreviousPress([this, listSize] {
       selectorIndex = ButtonNavigator::previousIndex(static_cast<int>(selectorIndex), listSize);
       clampSelector();
       requestUpdate();
@@ -879,7 +880,8 @@ void FileBrowserActivity::openBookActions(const size_t index) {
   const bool isFinished = LIBRARY_METADATA.isFinished(fullPath) || (statsBook != nullptr && statsBook->completed);
   startActivityForResult(std::make_unique<BookActionsActivity>(renderer, mappedInput, title, isToRead, isFinished),
                          [this, fullPath, title, entry](const ActivityResult& result) {
-                           confirmLongPressHandled = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+                           mappedInput.armPressedButtonsReleaseGuard();
+                           confirmLongPressHandled = false;
                            holdPreviewVisible = false;
                            if (result.isCancelled || !std::holds_alternative<MenuResult>(result.data)) {
                              requestUpdate();

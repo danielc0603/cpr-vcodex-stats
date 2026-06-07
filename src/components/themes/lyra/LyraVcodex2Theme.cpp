@@ -136,7 +136,10 @@ bool drawCover(GfxRenderer& renderer, const RecentBook& book, const int x, const
                const int height) {
   bool hasCover = false;
   Rect frame = coverFrameForRatio(x, y, width, height, 0, 0);
-  const std::string coverBmpPath = UITheme::resolveBookCoverThumbPath(book.path, book.coverBmpPath, width, height);
+  const std::string coverBmpPath =
+      (!book.coverBmpPath.empty() && Storage.exists(book.coverBmpPath.c_str()))
+          ? book.coverBmpPath
+          : UITheme::resolveBookCoverThumbPath(book.path, book.coverBmpPath, width, height);
   if (!coverBmpPath.empty()) {
     FsFile file;
     if (Storage.openFileForRead("HOME", coverBmpPath, file)) {
@@ -145,6 +148,7 @@ bool drawCover(GfxRenderer& renderer, const RecentBook& book, const int x, const
         const int sourceW = std::max(1, bitmap.getWidth());
         const int sourceH = std::max(1, bitmap.getHeight());
         frame = coverFrameForRatio(x, y, width, height, sourceW, sourceH);
+        renderer.fillRect(frame.x, frame.y, frame.width, frame.height, false);
         renderer.drawBitmap(bitmap, frame.x, frame.y, frame.width, frame.height);
         hasCover = true;
       }

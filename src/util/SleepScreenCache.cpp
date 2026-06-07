@@ -8,6 +8,8 @@
 #include "CrossPointSettings.h"
 
 namespace {
+constexpr uint8_t SLEEP_CACHE_RENDER_VERSION = 2;
+
 uint32_t getSourceFileSize(const std::string& sourcePath) {
   FsFile file;
   if (!Storage.openFileForRead("SLC", sourcePath, file)) {
@@ -32,6 +34,8 @@ uint32_t SleepScreenCache::hashKey(const std::string& sourcePath, const uint32_t
   hash ^= static_cast<uint8_t>(SETTINGS.sleepScreenCoverFilter);
   hash *= 16777619u;
   hash ^= static_cast<uint8_t>(SETTINGS.sleepScreenCoverMode);
+  hash *= 16777619u;
+  hash ^= SLEEP_CACHE_RENDER_VERSION;
   hash *= 16777619u;
   return hash;
 }

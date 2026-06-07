@@ -7,6 +7,7 @@
 #include <WiFi.h>
 
 #include "MappedInputManager.h"
+#include "ReadingStatsStore.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -88,6 +89,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 
 void OtaUpdateActivity::onEnter() {
   Activity::onEnter();
+  readingStatsReleasedForNetwork = READING_STATS.releaseMemoryForNetwork();
 
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");
@@ -107,6 +109,11 @@ void OtaUpdateActivity::onExit() {
   delay(100);              // Allow disconnect frame to be sent
   WiFi.mode(WIFI_OFF);
   delay(100);  // Allow WiFi hardware to fully power down
+
+  if (readingStatsReleasedForNetwork) {
+    READING_STATS.reloadAfterNetwork();
+    readingStatsReleasedForNetwork = false;
+  }
 }
 
 void OtaUpdateActivity::render(RenderLock&&) {

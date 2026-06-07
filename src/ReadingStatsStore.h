@@ -200,6 +200,8 @@ class ReadingStatsStore {
   void reset();
   bool exportToFile(const std::string& path) const;
   bool importFromFile(const std::string& path);
+  bool releaseMemoryForNetwork();
+  bool reloadAfterNetwork();
   bool saveToFile() const;
   bool loadFromFile();
 };

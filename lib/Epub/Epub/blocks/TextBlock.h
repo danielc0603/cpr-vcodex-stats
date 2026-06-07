@@ -9,6 +9,8 @@
 #include "Block.h"
 #include "BlockStyle.h"
 
+class FontCacheManager;
+
 // Represents a line of text on a page
 class TextBlock final : public Block {
  private:
@@ -44,6 +46,7 @@ class TextBlock final : public Block {
   size_t wordCount() const { return words.size(); }
   // given a renderer works out where to break the words into lines
   void render(const GfxRenderer& renderer, int fontId, int x, int y, uint8_t bionicReadingMode = 0) const;
+  void recordFontUsage(FontCacheManager& fontCacheManager, int fontId, uint8_t bionicReadingMode = 0) const;
   BlockType getType() override { return TEXT_BLOCK; }
   bool serialize(FsFile& file) const;
   static std::unique_ptr<TextBlock> deserialize(FsFile& file);

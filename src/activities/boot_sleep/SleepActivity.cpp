@@ -286,6 +286,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const std::str
   const bool hasGreyscale = bitmap.hasGreyscale() &&
                             SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
 
+  renderer.clearScreen();
   renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
 
   if (SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::INVERTED_BLACK_AND_WHITE) {
@@ -296,7 +297,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const std::str
     SleepScreenCache::save(renderer, sourcePath);
   }
 
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(hasGreyscale ? HalDisplay::HALF_REFRESH : HalDisplay::FULL_REFRESH);
 
   if (hasGreyscale) {
     bitmap.rewindToData();
@@ -324,7 +325,7 @@ bool SleepActivity::renderPngSleepScreen(const std::string& sourcePath) const {
     return false;
   }
 
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
   return true;
 }
 
@@ -391,7 +392,7 @@ void SleepActivity::renderCoverSleepScreen() const {
 
   FsFile file;
   if (SleepScreenCache::load(renderer, coverBmpPath)) {
-    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
     return;
   }
   if (Storage.openFileForRead("SLP", coverBmpPath, file)) {

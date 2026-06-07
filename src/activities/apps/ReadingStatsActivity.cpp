@@ -170,15 +170,13 @@ class RemoveStatsConfirmationActivity final : public Activity {
 
   void loop() override {
     if (waitForBackRelease) {
-      if (!mappedInput.isPressed(MappedInputManager::Button::Back) &&
-          !mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      if (!mappedInput.isPressed(MappedInputManager::Button::Back)) {
         waitForBackRelease = false;
       }
       return;
     }
     if (waitForConfirmRelease) {
-      if (!mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
-          !mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
         waitForConfirmRelease = false;
       }
       return;
@@ -382,8 +380,7 @@ void ReadingStatsActivity::loop() {
   const int pageItems = BOOKS_PER_PAGE;
 
   if (waitForBackRelease) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Back) &&
-        !mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Back)) {
       waitForBackRelease = false;
     }
     return;
@@ -526,7 +523,11 @@ void ReadingStatsActivity::openSelectedEntry() {
                          });
 }
 
-void ReadingStatsActivity::guardBackReturn() { waitForBackRelease = true; }
+void ReadingStatsActivity::guardBackReturn() {
+  mappedInput.armPressedButtonsReleaseGuard();
+  waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back);
+  waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+}
 
 void ReadingStatsActivity::render(RenderLock&&) {
   renderer.clearScreen();

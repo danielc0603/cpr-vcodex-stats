@@ -17,7 +17,6 @@ class BookReadingAdjustmentActivity final : public Activity {
   bool lastApplyFailed = false;
 
   void adjustSelectedValue(int delta);
-  void openDateSelection();
   void initializeSelectedDate();
   int32_t getSelectedDeltaMs() const;
   uint64_t getSelectedDayReadingMs() const;

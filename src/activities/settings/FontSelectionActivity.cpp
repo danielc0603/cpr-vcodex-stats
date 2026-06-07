@@ -16,6 +16,7 @@
 #include "CrossPointSettings.h"
 #include "FontInstaller.h"
 #include "MappedInputManager.h"
+#include "ReadingStatsStore.h"
 #include "SdCardFont.h"
 #include "SdCardFontGlobals.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -34,6 +35,10 @@ namespace {
       FONTS_MANIFEST_VERSION) "-b" FONT_MANIFEST_URL_STRINGIFY(CPFONT_VERSION) "/fonts.json"
 #endif
 
+constexpr uint32_t PROGRESS_RENDER_INTERVAL_MS = 1200;
+constexpr size_t PROGRESS_RENDER_STEP_BYTES = 64 * 1024;
+constexpr uint8_t PROGRESS_RENDER_STEP_PERCENT = 5;
+
 std::string shortStatus(const std::string& text) {
   return text.size() > 28 ? text.substr(0, 28) : text;
 }
@@ -45,6 +50,9 @@ FontSelectionActivity::FontSelectionActivity(GfxRenderer& renderer, MappedInputM
 
 void FontSelectionActivity::onEnter() {
   Activity::onEnter();
+  if (mode_ == Mode::Manage && !readingStatsReleasedForNetwork_) {
+    readingStatsReleasedForNetwork_ = READING_STATS.releaseMemoryForNetwork();
+  }
 
   fonts_.clear();
   fonts_.reserve(CrossPointSettings::BUILTIN_FONT_COUNT + (registry_ ? registry_->getFamilyCount() : 0));
@@ -96,6 +104,16 @@ void FontSelectionActivity::onEnter() {
 
 void FontSelectionActivity::onExit() {
   Activity::onExit();
+  if (readingStatsReleasedForNetwork_) {
+    catalogBaseUrl_.clear();
+    catalogBaseUrl_.shrink_to_fit();
+    catalog_.clear();
+    catalog_.shrink_to_fit();
+    statusMessage_.clear();
+    statusMessage_.shrink_to_fit();
+    READING_STATS.reloadAfterNetwork();
+    readingStatsReleasedForNetwork_ = false;
+  }
 }
 
 int FontSelectionActivity::currentListSize() const {
@@ -401,11 +419,32 @@ bool FontSelectionActivity::downloadCatalogFamily(CatalogFamily& family) {
     snprintf(tmpPath, sizeof(tmpPath), "%s.tmp", destPath);
     Storage.remove(tmpPath);
     const std::string url = catalogBaseUrl_ + file.name;
-    const auto result = HttpDownloader::downloadToFile(url, tmpPath, [this](size_t done, size_t total) {
-      downloadProgress_ = done;
-      downloadTotal_ = total;
-      requestUpdate(true);
-    });
+    unsigned long lastProgressRenderMs = 0;
+    size_t lastRenderedBytes = 0;
+    uint8_t lastRenderedPercent = 0;
+    const auto result = HttpDownloader::downloadToFile(
+        url, tmpPath,
+        [this, &lastProgressRenderMs, &lastRenderedBytes, &lastRenderedPercent](size_t done, size_t total) {
+          downloadProgress_ = done;
+          downloadTotal_ = total;
+
+          uint8_t percent = 0;
+          if (total > 0) {
+            percent = static_cast<uint8_t>(std::min<size_t>(100, (done * 100) / total));
+          }
+
+          const unsigned long now = millis();
+          const bool completed = total > 0 && done >= total;
+          const bool byteStep = done >= lastRenderedBytes + PROGRESS_RENDER_STEP_BYTES;
+          const bool percentStep = total > 0 && percent >= lastRenderedPercent + PROGRESS_RENDER_STEP_PERCENT;
+          const bool timeStep = now - lastProgressRenderMs >= PROGRESS_RENDER_INTERVAL_MS;
+          if (completed || byteStep || percentStep || timeStep) {
+            lastRenderedBytes = done;
+            lastRenderedPercent = percent;
+            lastProgressRenderMs = now;
+            requestUpdate(true);
+          }
+        });
 
     if (result != HttpDownloader::OK || !verifyDownloadedFile(tmpPath, file)) {
       Storage.remove(tmpPath);

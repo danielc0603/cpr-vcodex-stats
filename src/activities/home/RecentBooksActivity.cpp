@@ -154,6 +154,7 @@ void RecentBooksActivity::loop() {
       mappedInput.getHeldTime() >= RECENT_BOOK_LONG_PRESS_MS) {
     confirmLongPressHandled = true;
     holdPreviewVisible = false;
+    mappedInput.armPressedButtonsReleaseGuard();
     requestRemoveRecentBook(selectorIndex);
     return;
   }
@@ -187,16 +188,16 @@ void RecentBooksActivity::loop() {
   };
 
   if (gridView) {
-    buttonNavigator.onRelease({MappedInputManager::Button::Right}, [this, listSize, moveSelection] {
+    buttonNavigator.onPress({MappedInputManager::Button::Right}, [this, listSize, moveSelection] {
       moveSelection(RecentBooksGrid::moveHorizontal(static_cast<int>(selectorIndex), listSize, true));
     });
-    buttonNavigator.onRelease({MappedInputManager::Button::Left}, [this, listSize, moveSelection] {
+    buttonNavigator.onPress({MappedInputManager::Button::Left}, [this, listSize, moveSelection] {
       moveSelection(RecentBooksGrid::moveHorizontal(static_cast<int>(selectorIndex), listSize, false));
     });
-    buttonNavigator.onRelease({MappedInputManager::Button::Down}, [this, listSize, pageItems, moveSelection] {
+    buttonNavigator.onPress({MappedInputManager::Button::Down}, [this, listSize, pageItems, moveSelection] {
       moveSelection(RecentBooksGrid::moveVertical(static_cast<int>(selectorIndex), listSize, pageItems, true));
     });
-    buttonNavigator.onRelease({MappedInputManager::Button::Up}, [this, listSize, pageItems, moveSelection] {
+    buttonNavigator.onPress({MappedInputManager::Button::Up}, [this, listSize, pageItems, moveSelection] {
       moveSelection(RecentBooksGrid::moveVertical(static_cast<int>(selectorIndex), listSize, pageItems, false));
     });
     buttonNavigator.onContinuous({MappedInputManager::Button::Right}, [this, listSize, moveSelection] {
@@ -212,11 +213,11 @@ void RecentBooksActivity::loop() {
       moveSelection(RecentBooksGrid::moveVertical(static_cast<int>(selectorIndex), listSize, pageItems, false));
     });
   } else {
-    buttonNavigator.onNextRelease([this, listSize] {
+    buttonNavigator.onNextPress([this, listSize] {
       selectorIndex = ButtonNavigator::nextIndex(static_cast<int>(selectorIndex), listSize);
       requestUpdate();
     });
-    buttonNavigator.onPreviousRelease([this, listSize] {
+    buttonNavigator.onPreviousPress([this, listSize] {
       selectorIndex = ButtonNavigator::previousIndex(static_cast<int>(selectorIndex), listSize);
       requestUpdate();
     });

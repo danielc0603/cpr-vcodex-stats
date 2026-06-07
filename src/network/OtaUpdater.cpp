@@ -105,8 +105,8 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   esp_http_client_config_t client_config = {
       .url = latestReleaseUrl,
       .event_handler = event_handler,
-      .buffer_size = 8192,
-      .buffer_size_tx = 8192,
+      .buffer_size = 2048,
+      .buffer_size_tx = 1024,
       .user_data = &releaseParser,
       .skip_cert_common_name_check = true,
       .crt_bundle_attach = esp_crt_bundle_attach,

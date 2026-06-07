@@ -39,33 +39,30 @@ std::vector<CoverResolverCacheEntry>& coverResolverCache() {
   return cache;
 }
 
-std::string getCachedBookCoverPath(const std::string& bookPath, const std::string& coverBmpPath, const int width,
-                                   const int height) {
+bool getCachedBookCoverPath(const std::string& bookPath, const std::string& coverBmpPath, const int width,
+                            const int height, std::string& resolvedPath) {
   auto& cache = coverResolverCache();
   for (auto it = cache.begin(); it != cache.end(); ++it) {
     if (it->bookPath != bookPath || it->coverBmpPath != coverBmpPath || it->width != width || it->height != height) {
       continue;
     }
-    if (!it->resolvedPath.empty() && Storage.exists(it->resolvedPath.c_str())) {
+    if (it->resolvedPath.empty() || Storage.exists(it->resolvedPath.c_str())) {
       if (it != cache.begin()) {
         CoverResolverCacheEntry entry = *it;
         cache.erase(it);
         cache.insert(cache.begin(), std::move(entry));
       }
-      return cache.front().resolvedPath;
+      resolvedPath = cache.front().resolvedPath;
+      return true;
     }
     cache.erase(it);
-    return "";
+    return false;
   }
-  return "";
+  return false;
 }
 
 void rememberBookCoverPath(const std::string& bookPath, const std::string& coverBmpPath, const int width,
                            const int height, const std::string& resolvedPath) {
-  if (resolvedPath.empty()) {
-    return;
-  }
-
   auto& cache = coverResolverCache();
   cache.erase(std::remove_if(cache.begin(), cache.end(), [&](const CoverResolverCacheEntry& entry) {
                 return entry.bookPath == bookPath && entry.coverBmpPath == coverBmpPath && entry.width == width &&
@@ -204,8 +201,8 @@ std::string UITheme::resolveCoverThumbPath(const std::string& coverBmpPath, cons
 
 std::string UITheme::resolveBookCoverThumbPath(const std::string& bookPath, const std::string& coverBmpPath,
                                                const int preferredWidth, const int preferredHeight) {
-  const std::string cached = getCachedBookCoverPath(bookPath, coverBmpPath, preferredWidth, preferredHeight);
-  if (!cached.empty()) {
+  std::string cached;
+  if (getCachedBookCoverPath(bookPath, coverBmpPath, preferredWidth, preferredHeight, cached)) {
     return cached;
   }
 
@@ -216,6 +213,7 @@ std::string UITheme::resolveBookCoverThumbPath(const std::string& bookPath, cons
   }
 
   if (bookPath.empty()) {
+    rememberBookCoverPath(bookPath, coverBmpPath, preferredWidth, preferredHeight, "");
     return "";
   }
 
@@ -255,6 +253,7 @@ std::string UITheme::resolveBookCoverThumbPath(const std::string& bookPath, cons
     return cover;
   }
 
+  rememberBookCoverPath(bookPath, coverBmpPath, preferredWidth, preferredHeight, "");
   return "";
 }
 

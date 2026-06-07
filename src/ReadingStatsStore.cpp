@@ -1205,6 +1205,47 @@ bool ReadingStatsStore::saveToFile() const {
   return persistToFile(READING_STATS_FILE_JSON);
 }
 
+bool ReadingStatsStore::releaseMemoryForNetwork() {
+  if (activeSession.active) {
+    endSession();
+  }
+
+  if (dirty && !saveToFile()) {
+    LOG_ERR("RST", "Failed to save reading stats before network memory release");
+    return false;
+  }
+
+  books.clear();
+  books.shrink_to_fit();
+  legacyReadingDays.clear();
+  legacyReadingDays.shrink_to_fit();
+  readingDays.clear();
+  readingDays.shrink_to_fit();
+  sessionLog.clear();
+  sessionLog.shrink_to_fit();
+
+  activeSession = {};
+  activeCheckpoint = {};
+  lastSessionSnapshot = {};
+  sessionSerialCounter = 0;
+  invalidateSummaryCache();
+  dirty = false;
+  lastSaveMs = millis();
+  return true;
+}
+
+bool ReadingStatsStore::reloadAfterNetwork() {
+  if (!Storage.exists(READING_STATS_FILE_JSON)) {
+    return true;
+  }
+
+  const bool loaded = loadFromFile();
+  if (!loaded) {
+    LOG_ERR("RST", "Failed to reload reading stats after network operation");
+  }
+  return loaded;
+}
+
 bool ReadingStatsStore::loadFromFile() {
   const std::string tempPath = std::string(READING_STATS_FILE_JSON) + ".tmp";
   if (!Storage.exists(READING_STATS_FILE_JSON) && Storage.exists(tempPath.c_str())) {

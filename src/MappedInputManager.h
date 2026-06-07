@@ -19,8 +19,9 @@ class MappedInputManager {
 
   void setReaderMode(bool enabled) { readerMode = enabled; }
   void setReaderOrientation(uint8_t orientation) { readerOrientation = orientation; }
-  void update() const { gpio.update(); }
+  void update() const;
   void armConfirmReleaseGuard() const;
+  void armPressedButtonsReleaseGuard() const;
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   bool isPressed(Button button) const;
@@ -36,7 +37,12 @@ class MappedInputManager {
   HalGPIO& gpio;
   bool readerMode = false;
   uint8_t readerOrientation = 0;
-  mutable bool suppressConfirmReleaseUntilButtonUp = false;
+  mutable uint16_t suppressRawUntilReleaseMask = 0;
 
+  uint8_t rawButtonFor(Button button) const;
   bool mapButton(Button button, bool (HalGPIO::*fn)(uint8_t) const) const;
+  bool isSuppressedUntilRelease(Button button) const;
+  bool hasSuppressedRawButtonHeld() const;
+  bool consumeSuppressedRawInput() const;
+  static uint16_t rawButtonMask(uint8_t rawButton);
 };

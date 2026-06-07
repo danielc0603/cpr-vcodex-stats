@@ -21,6 +21,7 @@ class OtaUpdateActivity : public Activity {
   State state = WIFI_SELECTION;
   unsigned int lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
   OtaUpdater updater;
+  bool readingStatsReleasedForNetwork = false;
 
   void onWifiSelectionComplete(bool success);
   void checkForUpdateNow();

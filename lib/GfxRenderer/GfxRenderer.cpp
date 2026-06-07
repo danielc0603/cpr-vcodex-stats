@@ -870,15 +870,11 @@ void GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       const uint8_t val = outputRow[bmpX / 4] >> (6 - ((bmpX * 2) % 8)) & 0x3;
 
       if (renderMode == BW) {
-        if (darkMode) {
-          drawPixelRaw(screenX, screenY, val < 3);
-        } else if (val < 3) {
-          drawPixelRaw(screenX, screenY, true);
-        }
-      } else if (renderMode == GRAYSCALE_MSB && (val == 1 || val == 2)) {
-        drawPixel(screenX, screenY, false);
-      } else if (renderMode == GRAYSCALE_LSB && val == 1) {
-        drawPixel(screenX, screenY, false);
+        drawPixelRaw(screenX, screenY, val < 3);
+      } else if (renderMode == GRAYSCALE_MSB) {
+        drawPixelRaw(screenX, screenY, val == 1 || val == 2);
+      } else if (renderMode == GRAYSCALE_LSB) {
+        drawPixelRaw(screenX, screenY, val == 1);
       }
     }
   }
@@ -944,11 +940,7 @@ void GfxRenderer::drawBitmap1Bit(const Bitmap& bitmap, const int x, const int y,
       const uint8_t val = outputRow[bmpX / 4] >> (6 - ((bmpX * 2) % 8)) & 0x3;
 
       // For 1-bit source: 0 or 1 -> map to black (0,1,2) or white (3)
-      if (darkMode) {
-        drawPixelRaw(screenX, screenY, val < 3);
-      } else if (val < 3) {
-        drawPixelRaw(screenX, screenY, true);
-      }
+      drawPixelRaw(screenX, screenY, val < 3);
     }
   }
 
