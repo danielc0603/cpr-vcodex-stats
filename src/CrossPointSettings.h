@@ -255,6 +255,15 @@ class CrossPointSettings {
   enum SLEEP_IMAGE_ORDER { SLEEP_IMAGE_SHUFFLE = 0, SLEEP_IMAGE_SEQUENTIAL = 1, SLEEP_IMAGE_ORDER_COUNT };
   enum FILE_BROWSER_VIEW { FILE_BROWSER_LIST = 0, FILE_BROWSER_BOOKSHELF = 1, FILE_BROWSER_VIEW_COUNT };
   enum BOOKSHELF_COLUMNS { BOOKSHELF_COLUMNS_2 = 0, BOOKSHELF_COLUMNS_3 = 1, BOOKSHELF_COLUMNS_COUNT };
+  enum LIBRARY_SORT {
+    LIBRARY_SORT_TITLE = 0,
+    LIBRARY_SORT_AUTHOR = 1,
+    LIBRARY_SORT_RECENT = 2,
+    LIBRARY_SORT_PROGRESS = 3,
+    LIBRARY_SORT_FILE_TYPE = 4,
+    LIBRARY_SORT_PATH = 5,
+    LIBRARY_SORT_COUNT
+  };
   enum RECENT_BOOKS_VIEW { RECENT_BOOKS_LIST = 0, RECENT_BOOKS_GRID = 1, RECENT_BOOKS_VIEW_COUNT };
   enum SLEEP_REFRESH_MODE { SLEEP_REFRESH_OFF = 0, SLEEP_REFRESH_SOFT = 1, SLEEP_REFRESH_FULL = 2, SLEEP_REFRESH_COUNT };
 
@@ -417,7 +426,9 @@ class CrossPointSettings {
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
   uint8_t showHiddenFiles = 0;
   uint8_t fileBrowserView = FILE_BROWSER_BOOKSHELF;
-  uint8_t bookshelfColumns = BOOKSHELF_COLUMNS_3;
+  uint8_t bookshelfColumns = BOOKSHELF_COLUMNS_2;
+  uint8_t librarySort = LIBRARY_SORT_TITLE;
+  uint8_t advancedStatusHeader = 0;
   uint8_t recentBooksView = RECENT_BOOKS_GRID;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;

@@ -188,6 +188,12 @@ void MappedInputManager::armPressedButtonsReleaseGuard() const {
   }
 }
 
+void MappedInputManager::consumeActiveHoldUntilRelease() const {
+  for (uint8_t raw = HalGPIO::BTN_BACK; raw <= HalGPIO::BTN_POWER; ++raw) {
+    suppressRawUntilReleaseMask |= rawButtonMask(raw);
+  }
+}
+
 bool MappedInputManager::isSuppressedUntilRelease(const Button button) const {
   const uint8_t rawButton = rawButtonFor(button);
   const uint16_t mask = rawButtonMask(rawButton);

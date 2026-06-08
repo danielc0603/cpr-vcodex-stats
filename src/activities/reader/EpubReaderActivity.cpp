@@ -496,7 +496,7 @@ void EpubReaderActivity::loop() {
     backHoldPreviewVisible = false;
     waitingForConfirmSecondClick = false;
     firstConfirmClickMs = 0UL;
-    mappedInput.armPressedButtonsReleaseGuard();
+    mappedInput.consumeActiveHoldUntilRelease();
     openRecentBooksSwitcher();
     return;
   }
@@ -672,6 +672,22 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
               section.reset();
             }
           });
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::OPEN_READING_STATS: {
+      if (epub) {
+        READING_STATS.noteActivity();
+        mappedInput.consumeActiveHoldUntilRelease();
+        startActivityForResult(
+            std::make_unique<ReadingStatsDetailActivity>(renderer, mappedInput, epub->getPath(),
+                                                         ReadingStatsDetailContext{true}),
+            [this](const ActivityResult&) {
+              READING_STATS.resumeSession();
+              mappedInput.setReaderMode(true);
+              mappedInput.setReaderOrientation(activeReaderOrientation);
+              requestUpdate();
+            });
+      }
       break;
     }
     case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
@@ -1273,7 +1289,7 @@ void EpubReaderActivity::executeReaderQuickAction(CrossPointSettings::LONG_PRESS
       break;
     case CrossPointSettings::LONG_MENU_READING_STATS:
       if (epub) {
-        mappedInput.armPressedButtonsReleaseGuard();
+        mappedInput.consumeActiveHoldUntilRelease();
         startActivityForResult(
             std::make_unique<ReadingStatsDetailActivity>(renderer, mappedInput, epub->getPath(),
                                                          ReadingStatsDetailContext{true}),

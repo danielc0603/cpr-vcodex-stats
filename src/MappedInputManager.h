@@ -22,6 +22,7 @@ class MappedInputManager {
   void update() const;
   void armConfirmReleaseGuard() const;
   void armPressedButtonsReleaseGuard() const;
+  void consumeActiveHoldUntilRelease() const;
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   bool isPressed(Button button) const;

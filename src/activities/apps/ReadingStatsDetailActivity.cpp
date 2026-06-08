@@ -28,12 +28,12 @@
 #include "util/TimeUtils.h"
 
 namespace {
-constexpr int COVER_WIDTH = RecentBooksGrid::kCoverWidth;
-constexpr int COVER_HEIGHT = RecentBooksGrid::kCoverHeight;
+constexpr int COVER_WIDTH = 118;
+constexpr int COVER_HEIGHT = 178;
 constexpr int DONUT_RADIUS = 28;
 constexpr int DONUT_THICKNESS = 6;
-constexpr int METRIC_ROW_HEIGHT = 104;
-constexpr int TOP_CARD_HEIGHT = 258;
+constexpr int METRIC_ROW_HEIGHT = 27;
+constexpr int TOP_CARD_HEIGHT = 296;
 constexpr int SUMMARY_BANNER_HEIGHT = 46;
 constexpr int SUMMARY_BANNER_GAP = 8;
 constexpr int DETAIL_SCROLL_STEP = 110;
@@ -292,24 +292,18 @@ void drawStatsTableRow(GfxRenderer& renderer, const Rect& rect, const char* labe
   if (selected) {
     renderer.fillRectDither(rect.x, rect.y, rect.width, rect.height, Color::LightGray);
   }
-  renderer.drawRect(rect.x, rect.y, rect.width, rect.height);
+  renderer.drawLine(rect.x, rect.y + rect.height - 1, rect.x + rect.width - 1, rect.y + rect.height - 1, true);
 
-  const int pad = 12;
-  const auto labelLines = renderer.wrappedText(SMALL_FONT_ID, label, rect.width - pad * 2, 2, EpdFontFamily::BOLD);
-  int y = rect.y + 8;
-  for (const auto& line : labelLines) {
-    renderer.drawText(SMALL_FONT_ID, rect.x + pad, y, line.c_str(), true, EpdFontFamily::BOLD);
-    y += renderer.getLineHeight(SMALL_FONT_ID);
-  }
-
-  const auto lines = renderer.wrappedText(UI_10_FONT_ID, value.c_str(), rect.width - pad * 2, 3,
-                                          EpdFontFamily::REGULAR);
-  const int valueLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-  y = std::max(y + 4, rect.y + rect.height - static_cast<int>(lines.size()) * valueLineHeight - 8);
-  for (const auto& line : lines) {
-    renderer.drawText(UI_10_FONT_ID, rect.x + pad, y, line.c_str(), true, EpdFontFamily::REGULAR);
-    y += valueLineHeight;
-  }
+  const int pad = 4;
+  const int valueWidth = std::max(72, rect.width / 2);
+  const int labelWidth = std::max(40, rect.width - valueWidth - pad * 3);
+  const std::string safeLabel = renderer.truncatedText(SMALL_FONT_ID, label, labelWidth, EpdFontFamily::BOLD);
+  const std::string safeValue = renderer.truncatedText(UI_10_FONT_ID, value.c_str(), valueWidth, EpdFontFamily::BOLD);
+  const int valueTextWidth = renderer.getTextWidth(UI_10_FONT_ID, safeValue.c_str(), EpdFontFamily::BOLD);
+  const int y = rect.y + std::max(2, (rect.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2);
+  renderer.drawText(SMALL_FONT_ID, rect.x + pad, y + 1, safeLabel.c_str(), true, EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, rect.x + rect.width - pad - valueTextWidth, y, safeValue.c_str(), true,
+                    EpdFontFamily::BOLD);
 }
 
 void drawProgressBlock(GfxRenderer& renderer, const Rect& rect, const char* label, const uint8_t percent) {
@@ -723,19 +717,15 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
   const int viewportBottom = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing;
   const int fullWidth = pageWidth - metrics.contentSidePadding * 2;
   const Rect topCard{metrics.contentSidePadding, contentTop, fullWidth, TOP_CARD_HEIGHT};
-  const Rect coverBaseRect{topCard.x + 14, topCard.y + 18, COVER_WIDTH, COVER_HEIGHT};
-  const int sideTextX = coverBaseRect.x + coverBaseRect.width + 14;
-  const int sideTextWidth = std::max(40, topCard.x + topCard.width - sideTextX - 12);
-  const int titleTop = topCard.y + 16;
+  const Rect coverBaseRect{topCard.x + (topCard.width - COVER_WIDTH) / 2, topCard.y + 8, COVER_WIDTH, COVER_HEIGHT};
+  const int titleWidth = std::max(40, topCard.width - 24);
+  const int titleX = topCard.x + 12;
+  const int titleTop = coverBaseRect.y + coverBaseRect.height + 10;
   const auto wrappedTitle =
-      renderer.wrappedText(UI_12_FONT_ID, getDisplayTitle(*book).c_str(), sideTextWidth, 2, EpdFontFamily::BOLD);
+      renderer.wrappedText(UI_12_FONT_ID, getDisplayTitle(*book).c_str(), titleWidth, 2, EpdFontFamily::BOLD);
   int currentY = titleTop + static_cast<int>(wrappedTitle.size()) * renderer.getLineHeight(UI_12_FONT_ID);
   const int authorTop = currentY + 4;
   currentY += book->author.empty() ? 6 : renderer.getLineHeight(UI_10_FONT_ID) + 8;
-  const std::string currentChapter = book->chapterTitle.empty() ? std::string(tr(STR_NOT_SET)) : book->chapterTitle;
-  const int chapterTop = currentY + 4;
-  const auto chapterLines =
-      renderer.wrappedText(SMALL_FONT_ID, currentChapter.c_str(), sideTextWidth, 1, EpdFontFamily::REGULAR);
 
   int cardsTop = topCard.y + topCard.height + metrics.verticalSpacing + 10;
   const int summaryBannerTop = cardsTop;
@@ -743,12 +733,8 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
     cardsTop += SUMMARY_BANNER_HEIGHT + SUMMARY_BANNER_GAP;
   }
 
-  constexpr int metricRowCount = 12;
-  constexpr int metricColumnCount = 2;
-  constexpr int metricRowGap = 10;
-  constexpr int metricColumnGap = 10;
-  const int metricRows = (metricRowCount + metricColumnCount - 1) / metricColumnCount;
-  const int contentBottom = cardsTop + metricRows * METRIC_ROW_HEIGHT + (metricRows - 1) * metricRowGap +
+  constexpr int metricRowCount = 13;
+  const int contentBottom = cardsTop + metricRowCount * METRIC_ROW_HEIGHT +
                             metrics.verticalSpacing;
   maxScrollOffset = std::max(0, contentBottom - viewportBottom);
   scrollOffset = std::clamp(scrollOffset, 0, maxScrollOffset);
@@ -758,34 +744,27 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
   const bool baseScreenRestored = restoreBaseScreenBuffer();
   if (!baseScreenRestored) {
     renderer.clearScreen();
-    const Rect topCardRect = offsetRect(topCard, scrollDy);
-    renderer.drawRect(topCardRect.x, topCardRect.y, topCardRect.width, topCardRect.height);
     drawCover(renderer, coverRect, resolvedCoverBmpPath);
 
     currentY = titleTop + scrollDy;
     for (const auto& line : wrappedTitle) {
-      renderer.drawText(UI_12_FONT_ID, sideTextX, currentY, line.c_str(), true, EpdFontFamily::BOLD);
+      const int lineW = renderer.getTextWidth(UI_12_FONT_ID, line.c_str(), EpdFontFamily::BOLD);
+      renderer.drawText(UI_12_FONT_ID, titleX + std::max(0, (titleWidth - lineW) / 2), currentY, line.c_str(), true,
+                        EpdFontFamily::BOLD);
       currentY += renderer.getLineHeight(UI_12_FONT_ID);
     }
 
     if (!book->author.empty()) {
       const std::string author =
-          renderer.truncatedText(UI_10_FONT_ID, book->author.c_str(), sideTextWidth, EpdFontFamily::REGULAR);
-      renderer.drawText(UI_10_FONT_ID, sideTextX, authorTop + scrollDy, author.c_str());
+          renderer.truncatedText(UI_10_FONT_ID, book->author.c_str(), titleWidth, EpdFontFamily::REGULAR);
+      const int authorW = renderer.getTextWidth(UI_10_FONT_ID, author.c_str());
+      renderer.drawText(UI_10_FONT_ID, titleX + std::max(0, (titleWidth - authorW) / 2), authorTop + scrollDy,
+                        author.c_str());
     }
 
-    int chapterY = chapterTop + scrollDy;
-    renderer.drawText(SMALL_FONT_ID, sideTextX, chapterY, tr(STR_CURRENT_CHAPTER));
-    chapterY += renderer.getLineHeight(SMALL_FONT_ID) + 1;
-    for (const auto& line : chapterLines) {
-      renderer.drawText(SMALL_FONT_ID, sideTextX, chapterY, line.c_str());
-      chapterY += renderer.getLineHeight(SMALL_FONT_ID);
-    }
-
-    const int progressTop = topCard.y + topCard.height - 84 + scrollDy;
-    drawProgressBlock(renderer, Rect{sideTextX, progressTop, sideTextWidth, 36}, tr(STR_BOOK), book->lastProgressPercent);
-    drawProgressBlock(renderer, Rect{sideTextX, progressTop + 42, sideTextWidth, 36}, tr(STR_CHAPTER),
-                      book->chapterProgressPercent);
+    const int progressTop = authorTop + renderer.getLineHeight(UI_10_FONT_ID) + 10 + scrollDy;
+    drawProgressBlock(renderer, Rect{topCard.x + 18, progressTop, topCard.width - 36, 36}, tr(STR_BOOK),
+                      book->lastProgressPercent);
 
     int drawCardsTop = cardsTop + scrollDy;
     if (showCompletionBanner) {
@@ -817,20 +796,18 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
             : progressGainValue;
 
     const Rect tableRect{metrics.contentSidePadding, drawCardsTop, pageWidth - metrics.contentSidePadding * 2,
-                         metricRows * METRIC_ROW_HEIGHT + (metricRows - 1) * metricRowGap};
-    const int metricCardW = (tableRect.width - metricColumnGap) / metricColumnCount;
+                         metricRowCount * METRIC_ROW_HEIGHT};
     int rowIndex = 0;
     const auto drawRow = [&](const char* label, const std::string& value) {
-      const int metricRow = rowIndex / metricColumnCount;
-      const int metricColumn = rowIndex % metricColumnCount;
-      const Rect cardRect{tableRect.x + metricColumn * (metricCardW + metricColumnGap),
-                          tableRect.y + metricRow * (METRIC_ROW_HEIGHT + metricRowGap), metricCardW,
-                          METRIC_ROW_HEIGHT};
-      drawStatsTableRow(renderer, cardRect, label, value);
+      drawStatsTableRow(renderer,
+                        Rect{tableRect.x, tableRect.y + rowIndex * METRIC_ROW_HEIGHT, tableRect.width,
+                             METRIC_ROW_HEIGHT},
+                        label, value);
       rowIndex++;
     };
     drawRow(tr(STR_LAST_SESSION), ReadingStatsAnalytics::formatDurationHm(book->lastSessionMs));
     drawRow(tr(STR_TOTAL_TIME), ReadingStatsAnalytics::formatDurationHm(book->totalReadingMs));
+    drawRow(tr(STR_CHAPTER), std::to_string(std::min<int>(book->chapterProgressPercent, 100)) + "%");
     drawRow(tr(STR_BOOK_TIME_LEFT), ReadingStatsAnalytics::formatTimeLeftEstimate(bookEstimate));
     if (chapterEstimate.ready &&
         chapterEstimate.confidence != ReadingStatsAnalytics::EstimateConfidence::LOW_CONFIDENCE) {

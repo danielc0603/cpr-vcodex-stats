@@ -351,6 +351,8 @@ bool loadSettingsDirect(CrossPointSettings& s, const JsonDocument& doc, bool* ne
   loadToggle("showHiddenFiles", s.showHiddenFiles);
   loadEnum("fileBrowserView", s.fileBrowserView, CrossPointSettings::FILE_BROWSER_VIEW_COUNT);
   loadEnum("bookshelfColumns", s.bookshelfColumns, CrossPointSettings::BOOKSHELF_COLUMNS_COUNT);
+  loadEnum("librarySort", s.librarySort, CrossPointSettings::LIBRARY_SORT_COUNT);
+  loadToggle("advancedStatusHeader", s.advancedStatusHeader);
 
   loadString("opdsServerUrl", s.opdsServerUrl, sizeof(s.opdsServerUrl));
   loadString("opdsUsername", s.opdsUsername, sizeof(s.opdsUsername));
@@ -698,6 +700,8 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   doc["showHiddenFiles"] = s.showHiddenFiles;
   doc["fileBrowserView"] = s.fileBrowserView;
   doc["bookshelfColumns"] = s.bookshelfColumns;
+  doc["librarySort"] = s.librarySort;
+  doc["advancedStatusHeader"] = s.advancedStatusHeader;
 
   doc["displayDay"] = s.displayDay;
   doc["syncDayWifiChoice"] = s.syncDayWifiChoice;

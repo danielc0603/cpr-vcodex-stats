@@ -44,6 +44,7 @@ constexpr unsigned long RECENT_BOOK_LONG_PRESS_MS = 1400;
 constexpr unsigned long HOLD_PREVIEW_MS = 250;
 constexpr int HOME_SHORTCUT_PAGE_SIZE = 4;
 constexpr int LYRA_VCODEX2_COMPACT_DASHBOARD_HEIGHT = 286;
+int savedHomeSelectorIndex = 0;
 
 std::string getRecentBookConfirmationLabel(const RecentBook& book) {
   return !book.title.empty() ? book.title : book.path;
@@ -254,7 +255,6 @@ void HomeActivity::onEnter() {
 
   hasOpdsServers = OPDS_STORE.hasServers();
 
-  selectorIndex = 0;
   firstRenderDone = false;
   recentsLoading = false;
   recentsLoaded = false;
@@ -264,6 +264,7 @@ void HomeActivity::onEnter() {
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(getRecentBookLoadCount());
   rebuildHomeShortcutEntries();
+  selectorIndex = std::clamp(savedHomeSelectorIndex, 0, std::max(0, getMenuItemCount() - 1));
   recentsLoaded = !needsRecentCoverLoad(metrics.homeCoverHeight);
 
   requestUpdate();
@@ -271,6 +272,7 @@ void HomeActivity::onEnter() {
 
 void HomeActivity::onExit() {
   Activity::onExit();
+  savedHomeSelectorIndex = selectorIndex;
   freeCoverBuffer();
 }
 
@@ -403,13 +405,13 @@ void HomeActivity::loop() {
                                            SETTINGS.showCurrentBookCard != 0 && selectorIndex == 1;
     if (recentBooksAccessSelected) {
       if (recentBooks.size() > 1 && Storage.exists(recentBooks[1].path.c_str())) {
-        mappedInput.armPressedButtonsReleaseGuard();
+        mappedInput.consumeActiveHoldUntilRelease();
         onSelectBook(recentBooks[1].path);
       }
       return;
     }
 
-    mappedInput.armPressedButtonsReleaseGuard();
+    mappedInput.consumeActiveHoldUntilRelease();
     requestRemoveRecentBook(selectorIndex);
     return;
   }
@@ -539,8 +541,8 @@ void HomeActivity::render(RenderLock&&) {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   renderer.clearScreen();
-  const int dashboardSelectionState = getDashboardSelectionState();
-  bool bufferRestored = coverBufferStored && coverBufferSelectionState == dashboardSelectionState && restoreCoverBuffer();
+  const int dashboardBufferState = recentBooks.empty() ? -1 : static_cast<int>(recentBooks.size());
+  bool bufferRestored = coverBufferStored && coverBufferSelectionState == dashboardBufferState && restoreCoverBuffer();
   const int dashboardHeight = getDashboardHeight();
 
   if (!bufferRestored) {
@@ -553,7 +555,7 @@ void HomeActivity::render(RenderLock&&) {
     if (!coverBufferStored) {
       coverBufferStored = storeCoverBuffer();
     }
-    coverBufferSelectionState = coverBufferStored ? dashboardSelectionState : -99;
+    coverBufferSelectionState = coverBufferStored ? dashboardBufferState : -99;
     coverRendered = coverBufferStored;
   }
 
@@ -627,7 +629,12 @@ void HomeActivity::render(RenderLock&&) {
   }
 }
 
-void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
+void HomeActivity::onSelectBook(const std::string& path) {
+  if (mappedInput.isAnyMappedButtonPressed()) {
+    mappedInput.consumeActiveHoldUntilRelease();
+  }
+  activityManager.goToReader(path);
+}
 
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
 

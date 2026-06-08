@@ -22,8 +22,10 @@ class FileBrowserActivity final : public Activity {
 
   bool lockLongPressBack = false;
   bool confirmLongPressHandled = false;
+  bool backLongPressHandled = false;
   bool holdPreviewVisible = false;
   uint8_t libraryView = 0;
+  unsigned long lastNavigationInputMs = 0;
 
   // Files state
   std::string basepath = "/";
@@ -38,12 +40,18 @@ class FileBrowserActivity final : public Activity {
   std::vector<std::string> entryCoverPaths;
   std::vector<std::string> entryCoverSourcePaths;
   std::vector<uint8_t> entryCoverStates;
+  std::vector<std::string> libraryScanFolders;
+  bool libraryIndexingActive = false;
 
   // Data loading
   void loadFiles();
   void loadFilesystemFiles();
   void loadLibraryDashboard();
   void loadLibraryShelf(uint8_t shelf);
+  void startLibraryIndexing();
+  bool processLibraryIndexJob();
+  void addLibraryBookByPath(const std::string& path);
+  void sortLibraryDashboardBooks();
   void addLibraryBook(const std::string& path, const std::string& title, const std::string& author,
                       const std::string& coverPath, uint8_t progress, uint8_t state);
   bool isLibraryDashboard() const;
@@ -64,10 +72,12 @@ class FileBrowserActivity final : public Activity {
   void renderBookshelf(const Rect& rect, const int pageItems);
   void renderLibraryDashboard(const Rect& rect, const int pageItems);
   void renderPageIndicator(const Rect& rect, int pageItems) const;
+  void openSortViewMenu();
   void addEntryCoverPlaceholder();
   bool entryCanResolveCover(int index) const;
   bool resolveEntryCover(int index, bool allowGeneration);
   bool processVisibleCoverJob(int pageItems);
+  int countPendingCoverJobs(int pageItems) const;
   void openBookActions(size_t index);
   void handleBookAction(int action, const std::string& path, const std::string& title, const std::string& entry);
   void confirmDeleteFile(const std::string& fullPath, const std::string& label);

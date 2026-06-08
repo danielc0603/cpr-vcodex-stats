@@ -80,6 +80,8 @@ constexpr StrId SIDE_LONG_PRESS_LABELS[] = {StrId::STR_STATE_OFF, StrId::STR_LON
                                             StrId::STR_FONT_SIZE};
 constexpr StrId ORIENTATION_LABELS[] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED,
                                         StrId::STR_LANDSCAPE_CCW, StrId::STR_CYCLE_ORIENTATIONS};
+int savedSettingsCategoryIndex = 0;
+int savedSettingsSettingIndex = 0;
 
 template <size_t N>
 std::vector<StrId> valuesFromArray(const StrId (&values)[N]) {
@@ -93,6 +95,7 @@ std::vector<uint8_t> rawValuesFromArray(const uint8_t (&values)[N]) {
 
 const std::vector<SettingInfo>& getDeviceDisplaySettings() {
   static const std::vector<SettingInfo> settings = {
+      SettingInfo::Section(StrId::STR_SLEEP_SCREEN),
       SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &CrossPointSettings::sleepScreen,
                         {StrId::STR_DARK, StrId::STR_LIGHT, StrId::STR_CUSTOM, StrId::STR_COVER, StrId::STR_NONE_OPT,
                          StrId::STR_COVER_CUSTOM}),
@@ -107,8 +110,15 @@ const std::vector<SettingInfo>& getDeviceDisplaySettings() {
       SettingInfo::Enum(
           StrId::STR_REFRESH_FREQ, &CrossPointSettings::refreshFrequency,
           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15, StrId::STR_PAGES_30}),
+      SettingInfo::Section(StrId::STR_THEME_LAYOUT),
       SettingInfo::Enum(StrId::STR_MENU_RECENT_BOOKS, &CrossPointSettings::recentBooksView,
                         {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_GRID}),
+      SettingInfo::Enum(StrId::STR_LIBRARY_COLUMNS, &CrossPointSettings::bookshelfColumns,
+                        {StrId::STR_NUM_2, StrId::STR_NUM_3}),
+      SettingInfo::Enum(StrId::STR_LIBRARY_SORT_BY, &CrossPointSettings::librarySort,
+                        {StrId::STR_TITLE, StrId::STR_AUTHOR, StrId::STR_RECENT_BOOKS, StrId::STR_PROGRESS,
+                         StrId::STR_IMAGES, StrId::STR_BROWSE_FILES}),
+      SettingInfo::Section(StrId::STR_GENERAL),
       SettingInfo::Toggle(StrId::STR_SHOW_CURRENT_BOOK_CARD, &CrossPointSettings::showCurrentBookCard),
       SettingInfo::Toggle(StrId::STR_DARK_MODE, &CrossPointSettings::darkMode),
       SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix),
@@ -118,17 +128,19 @@ const std::vector<SettingInfo>& getDeviceDisplaySettings() {
 
 const std::vector<SettingInfo>& getDeviceReaderSettings() {
   static const std::vector<SettingInfo> settings = {
+      SettingInfo::Section(StrId::STR_FONTS),
       SettingInfo::Action(StrId::STR_FONT_FAMILY, SettingAction::FontSelection),
-      SettingInfo::Action(StrId::STR_FONT_MANAGER, SettingAction::FontSelection),
       SettingInfo::Enum(
           StrId::STR_FONT_SIZE, &CrossPointSettings::fontSize,
           {StrId::STR_X_SMALL, StrId::STR_SMALL, StrId::STR_MEDIUM, StrId::STR_LARGE, StrId::STR_X_LARGE}),
+      SettingInfo::Section(StrId::STR_READER_LAYOUT),
       SettingInfo::Enum(StrId::STR_LINE_SPACING, &CrossPointSettings::lineSpacing,
                         {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE}),
       SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin, {5, 40, 5}),
       SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
                         {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                          StrId::STR_BOOK_S_STYLE}),
+      SettingInfo::Section(StrId::STR_READING_AIDS),
       SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle),
       SettingInfo::Toggle(StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled),
       SettingInfo::Enum(StrId::STR_BIONIC_READING, &CrossPointSettings::bionicReading,
@@ -144,6 +156,7 @@ const std::vector<SettingInfo>& getDeviceReaderSettings() {
                          StrId::STR_REFRESH_MODE_FULL}),
       SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
                         {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS}),
+      SettingInfo::Section(StrId::STR_STATUS),
       SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar),
   };
   return settings;
@@ -192,14 +205,18 @@ const std::vector<SettingInfo>& getDeviceControlsSettings() {
 
 const std::vector<SettingInfo>& getDeviceSystemSettings() {
   static const std::vector<SettingInfo> settings = {
+      SettingInfo::Section(StrId::STR_GENERAL),
       SettingInfo::Enum(StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeout,
                         {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30}),
+      SettingInfo::Toggle(StrId::STR_STATUS, &CrossPointSettings::advancedStatusHeader),
       SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles),
+      SettingInfo::Section(StrId::STR_SYNC_NETWORK),
       SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network),
       SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync),
       SettingInfo::Enum(StrId::STR_OPDS_FILENAME_FORMAT, &CrossPointSettings::opdsFilenameFormat,
                         {StrId::STR_AUTHOR_TITLE, StrId::STR_TITLE_AUTHOR}),
       SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser),
+      SettingInfo::Section(StrId::STR_READING_CACHE),
       SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache),
       SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates),
       SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language),
@@ -479,9 +496,15 @@ void SettingsActivity::onEnter() {
 
   buildSettingsLists();
 
-  selectedCategoryIndex = std::clamp(initialCategoryIndex, 0, categoryCount - 1);
-  selectedSettingIndex = 0;
+  selectedCategoryIndex =
+      initialCategoryIndex == 0 ? std::clamp(savedSettingsCategoryIndex, 0, categoryCount - 1)
+                                : std::clamp(initialCategoryIndex, 0, categoryCount - 1);
   enterCategory(selectedCategoryIndex);
+  const int settingsCount = currentSettings != nullptr ? static_cast<int>(currentSettings->size()) : 0;
+  selectedSettingIndex = std::clamp(savedSettingsSettingIndex, 0, settingsCount);
+  if (selectedSettingIndex > 0 && !isSelectableSetting(selectedSettingIndex - 1)) {
+    selectedSettingIndex = firstSelectableSettingIndex();
+  }
 
   // Trigger first update
   requestUpdate();
@@ -529,6 +552,8 @@ void SettingsActivity::buildSettingsLists() {
 void SettingsActivity::onExit() {
   Activity::onExit();
 
+  savedSettingsCategoryIndex = selectedCategoryIndex;
+  savedSettingsSettingIndex = selectedSettingIndex;
   UITheme::getInstance().reload();  // Re-apply theme in case it was changed
 }
 

@@ -216,7 +216,10 @@ bool RecentBooksStore::loadFromFile() {
   if (Storage.exists(RECENT_BOOKS_FILE_JSON)) {
     String json = Storage.readFile(RECENT_BOOKS_FILE_JSON);
     if (!json.isEmpty()) {
-      return JsonSettingsIO::loadRecentBooks(*this, json.c_str());
+      if (JsonSettingsIO::loadRecentBooks(*this, json.c_str())) {
+        return true;
+      }
+      LOG_ERR("RBS", "recent.json could not be loaded; trying fallback sources");
     }
   }
 
@@ -228,6 +231,32 @@ bool RecentBooksStore::loadFromFile() {
       LOG_DBG("RBS", "Migrated recent.bin to recent.json");
       return true;
     }
+  }
+
+  std::vector<const ReadingBookStats*> candidates;
+  candidates.reserve(READING_STATS.getBooks().size());
+  for (const auto& book : READING_STATS.getBooks()) {
+    if (!book.path.empty() && Storage.exists(book.path.c_str())) {
+      candidates.push_back(&book);
+    }
+  }
+  std::sort(candidates.begin(), candidates.end(), [](const ReadingBookStats* a, const ReadingBookStats* b) {
+    if (a->lastReadAt != b->lastReadAt) return a->lastReadAt > b->lastReadAt;
+    return fallbackTitleFromPath(a->path) < fallbackTitleFromPath(b->path);
+  });
+
+  recentBooks.clear();
+  recentBooks.reserve(std::min<int>(MAX_RECENT_BOOKS, static_cast<int>(candidates.size())));
+  for (const auto* book : candidates) {
+    if (recentBooks.size() >= MAX_RECENT_BOOKS) break;
+    const std::string title = book->title.empty() ? fallbackTitleFromPath(book->path) : book->title;
+    recentBooks.push_back({book->bookId, book->path, title, book->author, book->coverBmpPath});
+  }
+  if (!recentBooks.empty()) {
+    normalizeBooks();
+    saveToFile();
+    LOG_DBG("RBS", "Rebuilt recent books from reading stats (%d entries)", static_cast<int>(recentBooks.size()));
+    return true;
   }
 
   return false;

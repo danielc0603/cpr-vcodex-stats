@@ -20,6 +20,7 @@ namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
 constexpr unsigned long RECENT_BOOK_LONG_PRESS_MS = 1400;
 constexpr unsigned long HOLD_PREVIEW_MS = 250;
+size_t savedRecentBooksSelectorIndex = 0;
 std::string getRecentBookConfirmationLabel(const RecentBook& book) {
   return !book.title.empty() ? book.title : book.path;
 }
@@ -83,7 +84,7 @@ void RecentBooksActivity::onEnter() {
   // Load data
   loadRecentBooks();
 
-  selectorIndex = 0;
+  selectorIndex = recentBooks.empty() ? 0 : std::min(savedRecentBooksSelectorIndex, recentBooks.size() - 1);
   confirmLongPressHandled = false;
   holdPreviewVisible = false;
   requestUpdate();
@@ -91,6 +92,7 @@ void RecentBooksActivity::onEnter() {
 
 void RecentBooksActivity::onExit() {
   Activity::onExit();
+  savedRecentBooksSelectorIndex = selectorIndex;
   recentBooks.clear();
   recentBookCompletedStates.clear();
 }
