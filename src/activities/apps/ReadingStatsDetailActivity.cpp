@@ -28,12 +28,12 @@
 #include "util/TimeUtils.h"
 
 namespace {
-constexpr int COVER_WIDTH = 118;
-constexpr int COVER_HEIGHT = 178;
+constexpr int COVER_WIDTH = 132;
+constexpr int COVER_HEIGHT = 198;
 constexpr int DONUT_RADIUS = 28;
 constexpr int DONUT_THICKNESS = 6;
 constexpr int METRIC_ROW_HEIGHT = 27;
-constexpr int TOP_CARD_HEIGHT = 296;
+constexpr int TOP_CARD_HEIGHT = 226;
 constexpr int SUMMARY_BANNER_HEIGHT = 46;
 constexpr int SUMMARY_BANNER_GAP = 8;
 constexpr int DETAIL_SCROLL_STEP = 110;
@@ -717,23 +717,25 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
   const int viewportBottom = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing;
   const int fullWidth = pageWidth - metrics.contentSidePadding * 2;
   const Rect topCard{metrics.contentSidePadding, contentTop, fullWidth, TOP_CARD_HEIGHT};
-  const Rect coverBaseRect{topCard.x + (topCard.width - COVER_WIDTH) / 2, topCard.y + 8, COVER_WIDTH, COVER_HEIGHT};
-  const int titleWidth = std::max(40, topCard.width - 24);
-  const int titleX = topCard.x + 12;
-  const int titleTop = coverBaseRect.y + coverBaseRect.height + 10;
+  const Rect coverBaseRect{topCard.x + 8, topCard.y + 8, COVER_WIDTH, COVER_HEIGHT};
+  const int detailsX = coverBaseRect.x + coverBaseRect.width + 12;
+  const int detailsWidth = std::max(64, topCard.x + topCard.width - detailsX - 8);
+  const int titleWidth = detailsWidth;
+  const int titleX = detailsX;
+  const int titleTop = topCard.y + 10;
   const auto wrappedTitle =
       renderer.wrappedText(UI_12_FONT_ID, getDisplayTitle(*book).c_str(), titleWidth, 2, EpdFontFamily::BOLD);
   int currentY = titleTop + static_cast<int>(wrappedTitle.size()) * renderer.getLineHeight(UI_12_FONT_ID);
   const int authorTop = currentY + 4;
-  currentY += book->author.empty() ? 6 : renderer.getLineHeight(UI_10_FONT_ID) + 8;
+  currentY += book->author.empty() ? 8 : renderer.getLineHeight(UI_10_FONT_ID) + 10;
 
-  int cardsTop = topCard.y + topCard.height + metrics.verticalSpacing + 10;
+  int cardsTop = topCard.y + topCard.height + metrics.verticalSpacing;
   const int summaryBannerTop = cardsTop;
   if (showCompletionBanner) {
     cardsTop += SUMMARY_BANNER_HEIGHT + SUMMARY_BANNER_GAP;
   }
 
-  constexpr int metricRowCount = 13;
+  constexpr int metricRowCount = 15;
   const int contentBottom = cardsTop + metricRowCount * METRIC_ROW_HEIGHT +
                             metrics.verticalSpacing;
   maxScrollOffset = std::max(0, contentBottom - viewportBottom);
@@ -760,19 +762,9 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
       const int authorW = renderer.getTextWidth(UI_10_FONT_ID, author.c_str());
       renderer.drawText(UI_10_FONT_ID, titleX + std::max(0, (titleWidth - authorW) / 2), authorTop + scrollDy,
                         author.c_str());
-    }
-
-    const int progressTop = authorTop + renderer.getLineHeight(UI_10_FONT_ID) + 10 + scrollDy;
-    drawProgressBlock(renderer, Rect{topCard.x + 18, progressTop, topCard.width - 36, 36}, tr(STR_BOOK),
-                      book->lastProgressPercent);
-
-    int drawCardsTop = cardsTop + scrollDy;
-    if (showCompletionBanner) {
-      drawSummaryBanner(
-          renderer,
-          Rect{metrics.contentSidePadding, summaryBannerTop + scrollDy, pageWidth - metrics.contentSidePadding * 2,
-               SUMMARY_BANNER_HEIGHT},
-          tr(STR_BOOK_FINISHED), tr(STR_COMPLETED_THIS_SESSION), true);
+      currentY = authorTop + scrollDy + renderer.getLineHeight(UI_10_FONT_ID) + 8;
+    } else {
+      currentY += 8;
     }
 
     const auto bookEstimate = ReadingStatsAnalytics::buildBookTimeLeftEstimate(*book);
@@ -795,6 +787,29 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
                   "%"
             : progressGainValue;
 
+    const int progressTop = currentY + 2;
+    drawProgressBlock(renderer, Rect{detailsX, progressTop, detailsWidth, 34}, tr(STR_BOOK),
+                      book->lastProgressPercent);
+    drawProgressBlock(renderer,
+                      Rect{detailsX, progressTop + 46, detailsWidth, 34}, tr(STR_CHAPTER),
+                      std::min<uint8_t>(book->chapterProgressPercent, 100));
+    const std::string bookTimeLeft = ReadingStatsAnalytics::formatTimeLeftEstimate(bookEstimate);
+    const int timeLeftTop = progressTop + 94;
+    renderer.drawText(SMALL_FONT_ID, detailsX, timeLeftTop, tr(STR_BOOK_TIME_LEFT), true, EpdFontFamily::BOLD);
+    const std::string safeTimeLeft =
+        renderer.truncatedText(UI_10_FONT_ID, bookTimeLeft.c_str(), detailsWidth, EpdFontFamily::BOLD);
+    renderer.drawText(UI_10_FONT_ID, detailsX, timeLeftTop + renderer.getLineHeight(SMALL_FONT_ID) + 4,
+                      safeTimeLeft.c_str(), true, EpdFontFamily::BOLD);
+
+    int drawCardsTop = cardsTop + scrollDy;
+    if (showCompletionBanner) {
+      drawSummaryBanner(
+          renderer,
+          Rect{metrics.contentSidePadding, summaryBannerTop + scrollDy, pageWidth - metrics.contentSidePadding * 2,
+               SUMMARY_BANNER_HEIGHT},
+          tr(STR_BOOK_FINISHED), tr(STR_COMPLETED_THIS_SESSION), true);
+    }
+
     const Rect tableRect{metrics.contentSidePadding, drawCardsTop, pageWidth - metrics.contentSidePadding * 2,
                          metricRowCount * METRIC_ROW_HEIGHT};
     int rowIndex = 0;
@@ -805,9 +820,10 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
                         label, value);
       rowIndex++;
     };
+    drawRow(tr(STR_BOOK), std::to_string(std::min<int>(book->lastProgressPercent, 100)) + "%");
+    drawRow(tr(STR_CHAPTER), std::to_string(std::min<int>(book->chapterProgressPercent, 100)) + "%");
     drawRow(tr(STR_LAST_SESSION), ReadingStatsAnalytics::formatDurationHm(book->lastSessionMs));
     drawRow(tr(STR_TOTAL_TIME), ReadingStatsAnalytics::formatDurationHm(book->totalReadingMs));
-    drawRow(tr(STR_CHAPTER), std::to_string(std::min<int>(book->chapterProgressPercent, 100)) + "%");
     drawRow(tr(STR_BOOK_TIME_LEFT), ReadingStatsAnalytics::formatTimeLeftEstimate(bookEstimate));
     if (chapterEstimate.ready &&
         chapterEstimate.confidence != ReadingStatsAnalytics::EstimateConfidence::LOW_CONFIDENCE) {

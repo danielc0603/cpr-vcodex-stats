@@ -55,6 +55,7 @@ class HomeActivity final : public Activity {
   int getRecentBookLoadCount() const;
   int getDashboardHeight() const;
   int getDashboardSelectionState() const;
+  void drawDashboardSelectionOverlay(const Rect& rect);
 
  public:
   explicit HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

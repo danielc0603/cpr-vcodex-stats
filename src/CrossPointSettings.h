@@ -428,7 +428,7 @@ class CrossPointSettings {
   uint8_t fileBrowserView = FILE_BROWSER_BOOKSHELF;
   uint8_t bookshelfColumns = BOOKSHELF_COLUMNS_2;
   uint8_t librarySort = LIBRARY_SORT_TITLE;
-  uint8_t advancedStatusHeader = 0;
+  uint8_t advancedStatusHeader = 1;
   uint8_t recentBooksView = RECENT_BOOKS_GRID;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;

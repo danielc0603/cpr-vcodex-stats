@@ -114,6 +114,9 @@ void XtcReaderActivity::onEnter() {
   Activity::onEnter();
   mappedInput.setReaderMode(true);
   mappedInput.setReaderOrientation(SETTINGS.orientation);
+  if (mappedInput.isAnyMappedButtonPressed()) {
+    mappedInput.consumeActiveHoldUntilRelease();
+  }
 
   if (!xtc) {
     return;

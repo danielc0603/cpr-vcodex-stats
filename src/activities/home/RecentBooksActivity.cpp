@@ -269,20 +269,19 @@ void RecentBooksActivity::render(RenderLock&&) {
     const int gridWidth = RecentBooksGrid::kColumns * RecentBooksGrid::kCoverWidth +
                           (RecentBooksGrid::kColumns - 1) * RecentBooksGrid::kGridSpacing;
     const int startX = (pageWidth - gridWidth) / 2;
-    const int metadataTop = contentTop;
-    const int gridTop = metadataTop + RecentBooksGrid::kTitleStripHeight + RecentBooksGrid::kTitleGridGap;
-
-    RecentBooksGrid::drawSelectedTitle(renderer, recentBooks, static_cast<int>(selectorIndex), startX, metadataTop,
-                                       gridWidth);
-    const int dividerY = gridTop - RecentBooksGrid::kMetadataDividerGap;
-    renderer.drawLine(metrics.contentSidePadding, dividerY, pageWidth - metrics.contentSidePadding, dividerY, true);
+    const int metadataTop = contentTop + contentHeight - RecentBooksGrid::kTitleStripHeight;
+    const int gridTop = contentTop;
+    const int dividerY = metadataTop - RecentBooksGrid::kMetadataDividerGap;
     RecentBooksGrid::drawGrid(renderer, recentBooks, static_cast<int>(selectorIndex), pageStart, pageEnd - pageStart,
                               startX, gridTop);
+    renderer.drawLine(metrics.contentSidePadding, dividerY, pageWidth - metrics.contentSidePadding, dividerY, true);
+    RecentBooksGrid::drawSelectedTitle(renderer, recentBooks, static_cast<int>(selectorIndex), startX, metadataTop,
+                                       gridWidth);
 
     const int totalPages = (static_cast<int>(recentBooks.size()) + pageItems - 1) / pageItems;
     if (totalPages > 1) {
       const int currentPage = selectorIndex / pageItems;
-      const int dotsY = contentTop + contentHeight - 12;
+      const int dotsY = std::max(contentTop, metadataTop - 18);
       RecentBooksGrid::drawPageDots(renderer, pageWidth, dotsY, totalPages, currentPage);
     }
   }

@@ -73,7 +73,7 @@ const std::vector<SettingInfo>& getSettingsList() {
                         {StrId::STR_NUM_2, StrId::STR_NUM_3}, "bookshelfColumns", StrId::STR_CAT_DISPLAY),
       SettingInfo::Enum(StrId::STR_LIBRARY_SORT_BY, &CrossPointSettings::librarySort,
                         {StrId::STR_TITLE, StrId::STR_AUTHOR, StrId::STR_RECENT_BOOKS, StrId::STR_PROGRESS,
-                         StrId::STR_IMAGES, StrId::STR_BROWSE_FILES},
+                         StrId::STR_FILE_TYPE, StrId::STR_FOLDER_PATH},
                         "librarySort", StrId::STR_CAT_DISPLAY),
       SettingInfo::Toggle(StrId::STR_SHOW_CURRENT_BOOK_CARD, &CrossPointSettings::showCurrentBookCard,
                           "showCurrentBookCard", StrId::STR_CAT_DISPLAY),

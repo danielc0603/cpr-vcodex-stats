@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <utility>
 #include <variant>
 
@@ -37,6 +38,7 @@ constexpr int BOOKSHELF_CARD_GAP = 8;
 constexpr int BOOKSHELF_FOLDER_ICON_SIZE = 28;
 constexpr int CARD_PAD = 12;
 constexpr int CARD_FOCUS_INSET = 4;
+constexpr int LIBRARY_SECTION_LABEL_HEIGHT = 18;
 constexpr int SHELF_COVER_WIDTH = RecentBooksGrid::kCoverWidth;
 constexpr int SHELF_COVER_HEIGHT = RecentBooksGrid::kCoverHeight;
 constexpr uint8_t MEANINGFUL_PROGRESS_PERCENT = 2;
@@ -47,7 +49,8 @@ constexpr uint8_t LIBRARY_VIEW_FINISHED = 5;
 constexpr uint8_t LIBRARY_VIEW_FILES = 7;
 constexpr size_t MAX_LIBRARY_DASHBOARD_BOOKS = 240;
 constexpr int MAX_LIBRARY_SCAN_DEPTH = 8;
-constexpr int LIBRARY_DASHBOARD_SHORTCUT_COUNT = 2;
+constexpr int LIBRARY_DASHBOARD_SHORTCUT_COUNT = 0;
+constexpr uint8_t LIBRARY_STATE_SECTION = 250;
 
 enum BookAction : int {
   BOOK_ACTION_CONTINUE = 0,
@@ -107,8 +110,7 @@ enum SortViewAction : int {
   SORT_VIEW_FILE_TYPE = 4,
   SORT_VIEW_PATH = 5,
   SORT_VIEW_BROWSE_FILES = 10,
-  SORT_VIEW_COLUMNS_2 = 20,
-  SORT_VIEW_COLUMNS_3 = 21,
+  SORT_VIEW_COLUMNS = 20,
 };
 
 std::string savedBrowserBasepath = "/";
@@ -398,12 +400,12 @@ class SortViewActivity final : public Activity {
         {SORT_VIEW_AUTHOR, sortPrefix + tr(STR_AUTHOR), sort == CrossPointSettings::LIBRARY_SORT_AUTHOR},
         {SORT_VIEW_RECENT, sortPrefix + tr(STR_RECENT_BOOKS), sort == CrossPointSettings::LIBRARY_SORT_RECENT},
         {SORT_VIEW_PROGRESS, sortPrefix + tr(STR_PROGRESS), sort == CrossPointSettings::LIBRARY_SORT_PROGRESS},
-        {SORT_VIEW_FILE_TYPE, sortPrefix + tr(STR_IMAGES), sort == CrossPointSettings::LIBRARY_SORT_FILE_TYPE},
-        {SORT_VIEW_PATH, sortPrefix + tr(STR_BROWSE_FILES), sort == CrossPointSettings::LIBRARY_SORT_PATH},
-        {SORT_VIEW_COLUMNS_2, std::string(tr(STR_FILE_VIEW_BOOKSHELF)) + ": " + tr(STR_NUM_2),
-         columns == CrossPointSettings::BOOKSHELF_COLUMNS_2},
-        {SORT_VIEW_COLUMNS_3, std::string(tr(STR_FILE_VIEW_BOOKSHELF)) + ": " + tr(STR_NUM_3),
-         columns == CrossPointSettings::BOOKSHELF_COLUMNS_3},
+        {SORT_VIEW_FILE_TYPE, sortPrefix + tr(STR_FILE_TYPE), sort == CrossPointSettings::LIBRARY_SORT_FILE_TYPE},
+        {SORT_VIEW_PATH, sortPrefix + tr(STR_FOLDER_PATH), sort == CrossPointSettings::LIBRARY_SORT_PATH},
+        {SORT_VIEW_COLUMNS,
+         std::string(tr(STR_LIBRARY_COLUMNS)) + ": " +
+             (columns == CrossPointSettings::BOOKSHELF_COLUMNS_2 ? tr(STR_NUM_2) : tr(STR_NUM_3)),
+         false},
         {SORT_VIEW_BROWSE_FILES, tr(STR_BROWSE_FILES), false},
     };
     requestUpdate();
@@ -661,28 +663,16 @@ void FileBrowserActivity::clampSelector() {
 }
 
 void FileBrowserActivity::loadLibraryDashboard() {
-  struct ShelfInfo {
-    StrId titleId;
-    StrId subtitleId;
-    uint8_t view;
-  };
-  const ShelfInfo shelves[] = {
-      {StrId::STR_TO_READ, StrId::STR_BOOKS_QUEUED, LIBRARY_VIEW_TO_READ},
-      {StrId::STR_FINISHED_BOOKS, StrId::STR_COMPLETED_READING, LIBRARY_VIEW_FINISHED},
-  };
-
-  for (const auto& shelf : shelves) {
-    const char* shelfTitle = I18N.get(shelf.titleId);
-    files.emplace_back(std::string("@") + shelfTitle);
-    completedFileStates.push_back(0);
-    progressFileStates.push_back(0);
-    libraryFileStates.push_back(shelf.view);
-    folderItemCounts.push_back(0);
-    entryPaths.emplace_back();
-    entryTitles.emplace_back(shelfTitle);
-    entrySubtitles.emplace_back(I18N.get(shelf.subtitleId));
-    addEntryCoverPlaceholder();
-  }
+  const char* finishedTitle = tr(STR_FINISHED_BOOKS);
+  files.emplace_back(std::string("@") + finishedTitle);
+  completedFileStates.push_back(0);
+  progressFileStates.push_back(0);
+  libraryFileStates.push_back(LIBRARY_VIEW_FINISHED);
+  folderItemCounts.push_back(0);
+  entryPaths.emplace_back();
+  entryTitles.emplace_back(finishedTitle);
+  entrySubtitles.emplace_back(I18N.get(StrId::STR_COMPLETED_READING));
+  addEntryCoverPlaceholder();
 
   if (isBookshelfMode()) {
     startLibraryIndexing();
@@ -752,7 +742,7 @@ void FileBrowserActivity::addLibraryBookByPath(const std::string& path) {
 }
 
 void FileBrowserActivity::sortLibraryDashboardBooks() {
-  if (!isLibraryDashboard() || files.size() <= LIBRARY_DASHBOARD_SHORTCUT_COUNT) {
+  if (!isLibraryDashboard() || files.empty()) {
     return;
   }
 
@@ -771,13 +761,16 @@ void FileBrowserActivity::sortLibraryDashboardBooks() {
   };
 
   std::vector<Row> rows;
-  rows.reserve(files.size() - LIBRARY_DASHBOARD_SHORTCUT_COUNT);
-  for (size_t index = LIBRARY_DASHBOARD_SHORTCUT_COUNT; index < files.size(); ++index) {
+  std::vector<Row> sections;
+  rows.reserve(files.size());
+  sections.reserve(1);
+  for (size_t index = 0; index < files.size(); ++index) {
+    const uint8_t state =
+        index < libraryFileStates.size() ? libraryFileStates[index] : static_cast<uint8_t>(LIBRARY_STATE_UNREAD);
     rows.push_back(Row{files[index],
                        index < completedFileStates.size() ? completedFileStates[index] : static_cast<uint8_t>(0),
                        index < progressFileStates.size() ? progressFileStates[index] : static_cast<uint8_t>(0),
-                       index < libraryFileStates.size() ? libraryFileStates[index]
-                                                        : static_cast<uint8_t>(LIBRARY_STATE_UNREAD),
+                       state,
                        index < folderItemCounts.size() ? folderItemCounts[index] : static_cast<uint16_t>(0),
                        index < entryPaths.size() ? entryPaths[index] : "",
                        index < entryTitles.size() ? entryTitles[index] : "",
@@ -785,9 +778,19 @@ void FileBrowserActivity::sortLibraryDashboardBooks() {
                        index < entryCoverPaths.size() ? entryCoverPaths[index] : "",
                        index < entryCoverSourcePaths.size() ? entryCoverSourcePaths[index] : "",
                        index < entryCoverStates.size() ? entryCoverStates[index] : ENTRY_COVER_UNKNOWN});
+    if (state == LIBRARY_VIEW_FINISHED && entryPaths[index].empty()) {
+      sections.push_back(std::move(rows.back()));
+      rows.pop_back();
+    }
   }
 
   std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+    const bool toReadA = a.state == LIBRARY_STATE_TO_READ;
+    const bool toReadB = b.state == LIBRARY_STATE_TO_READ;
+    if (toReadA != toReadB) return toReadA;
+    const bool finishedA = a.state == LIBRARY_STATE_FINISHED;
+    const bool finishedB = b.state == LIBRARY_STATE_FINISHED;
+    if (finishedA != finishedB) return !finishedA;
     const auto* statsA = READING_STATS.findBook(a.path);
     const auto* statsB = READING_STATS.findBook(b.path);
     const std::string titleA = !a.title.empty() ? a.title : titleFromPath(a.path);
@@ -818,9 +821,10 @@ void FileBrowserActivity::sortLibraryDashboardBooks() {
         return lowercaseCopy(titleA) < lowercaseCopy(titleB);
     }
   });
+  rows.insert(rows.end(), std::make_move_iterator(sections.begin()), std::make_move_iterator(sections.end()));
 
   for (size_t offset = 0; offset < rows.size(); ++offset) {
-    const size_t index = LIBRARY_DASHBOARD_SHORTCUT_COUNT + offset;
+    const size_t index = offset;
     files[index] = std::move(rows[offset].file);
     completedFileStates[index] = rows[offset].completed;
     progressFileStates[index] = rows[offset].progress;
@@ -973,7 +977,7 @@ bool FileBrowserActivity::entryCanResolveCover(const int index) const {
   if (entry.empty() || entry.back() == '/') {
     return false;
   }
-  if (!isLibraryShelf() && basepath == "/" && !(isLibraryDashboard() && index >= 3)) {
+  if (!isLibraryShelf() && basepath == "/" && !isLibraryDashboard()) {
     return false;
   }
 
@@ -1027,8 +1031,7 @@ bool FileBrowserActivity::resolveEntryCover(const int index, const bool allowGen
     return true;
   }
 
-  if (!allowGeneration || (index < static_cast<int>(libraryFileStates.size()) &&
-                           libraryFileStates[index] == LIBRARY_STATE_FINISHED)) {
+  if (!allowGeneration) {
     return false;
   }
 
@@ -1067,6 +1070,19 @@ bool FileBrowserActivity::processVisibleCoverJob(const int pageItems) {
       return true;
     }
   }
+  if (isLibraryDashboard()) {
+    for (int index = 0; index < static_cast<int>(files.size()); ++index) {
+      if (index >= pageStartIndex && index < pageEndIndex) {
+        continue;
+      }
+      if (index < static_cast<int>(entryCoverStates.size()) && entryCoverStates[index] == ENTRY_COVER_UNKNOWN &&
+          entryCanResolveCover(index)) {
+        resolveEntryCover(index, true);
+        requestUpdate();
+        return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -1074,8 +1090,9 @@ int FileBrowserActivity::countPendingCoverJobs(const int pageItems) const {
   if (!isBookshelfMode() || pageItems <= 0) {
     return 0;
   }
-  const int pageStartIndex = (static_cast<int>(selectorIndex) / pageItems) * pageItems;
-  const int pageEndIndex = std::min(static_cast<int>(files.size()), pageStartIndex + pageItems);
+  const int pageStartIndex = isLibraryDashboard() ? 0 : (static_cast<int>(selectorIndex) / pageItems) * pageItems;
+  const int pageEndIndex =
+      isLibraryDashboard() ? static_cast<int>(files.size()) : std::min(static_cast<int>(files.size()), pageStartIndex + pageItems);
   int pending = 0;
   for (int index = pageStartIndex; index < pageEndIndex; ++index) {
     if (index < static_cast<int>(entryCoverStates.size()) && entryCoverStates[index] == ENTRY_COVER_UNKNOWN &&
@@ -1203,7 +1220,9 @@ void FileBrowserActivity::loop() {
   const bool selectedIsDirectory = !selectedEntry.empty() && selectedEntry.back() == '/';
   const bool selectedSupportsBookActions =
       hasSelection && isBookshelfMode() && !selectedIsDirectory &&
-      (!isLibraryDashboard() || selectorIndex >= LIBRARY_DASHBOARD_SHORTCUT_COUNT);
+      selectorIndex < entryPaths.size() && !entryPaths[selectorIndex].empty() &&
+      (!isLibraryDashboard() ||
+       (selectorIndex < libraryFileStates.size() && libraryFileStates[selectorIndex] < LIBRARY_STATE_SECTION));
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
     confirmLongPressHandled = false;
@@ -1245,9 +1264,12 @@ void FileBrowserActivity::loop() {
     if (isBookshelfMode() && isLibraryDashboard()) {
       const uint8_t targetView =
           selectorIndex < libraryFileStates.size() ? libraryFileStates[selectorIndex] : LIBRARY_VIEW_FILES;
-      if (targetView == LIBRARY_VIEW_FILES) {
+      const bool selectedSection =
+          selectorIndex < entryPaths.size() && entryPaths[selectorIndex].empty() &&
+          (targetView == LIBRARY_VIEW_TO_READ || targetView == LIBRARY_VIEW_FINISHED || targetView == LIBRARY_VIEW_FILES);
+      if (selectedSection && targetView == LIBRARY_VIEW_FILES) {
         libraryView = LIBRARY_VIEW_FILES;
-      } else if (targetView == LIBRARY_VIEW_TO_READ || targetView == LIBRARY_VIEW_FINISHED) {
+      } else if (selectedSection && (targetView == LIBRARY_VIEW_TO_READ || targetView == LIBRARY_VIEW_FINISHED)) {
         libraryView = targetView;
       } else {
         if (selectorIndex >= entryPaths.size() || entryPaths[selectorIndex].empty()) return;
@@ -1350,8 +1372,20 @@ void FileBrowserActivity::loop() {
   if (isBookshelfMode()) {
     buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] { moveBookshelfHorizontal(1); });
     buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] { moveBookshelfHorizontal(-1); });
-    buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, [this] { moveBookshelfVertical(1); });
-    buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this] { moveBookshelfVertical(-1); });
+    buttonNavigator.onPress({MappedInputManager::Button::Down}, [this] { moveBookshelfVertical(1); });
+    buttonNavigator.onPress({MappedInputManager::Button::Up}, [this] { moveBookshelfVertical(-1); });
+    buttonNavigator.onContinuous({MappedInputManager::Button::Down}, [this, listSize, pageItems] {
+      lastNavigationInputMs = millis();
+      selectorIndex = ButtonNavigator::nextPageIndex(static_cast<int>(selectorIndex), listSize, pageItems);
+      clampSelector();
+      requestUpdate();
+    });
+    buttonNavigator.onContinuous({MappedInputManager::Button::Up}, [this, listSize, pageItems] {
+      lastNavigationInputMs = millis();
+      selectorIndex = ButtonNavigator::previousPageIndex(static_cast<int>(selectorIndex), listSize, pageItems);
+      clampSelector();
+      requestUpdate();
+    });
   } else {
     buttonNavigator.onNextPress([this, listSize] {
       lastNavigationInputMs = millis();
@@ -1441,11 +1475,10 @@ void FileBrowserActivity::openSortViewMenu() {
       case SORT_VIEW_PATH:
         SETTINGS.librarySort = CrossPointSettings::LIBRARY_SORT_PATH;
         break;
-      case SORT_VIEW_COLUMNS_2:
-        SETTINGS.bookshelfColumns = CrossPointSettings::BOOKSHELF_COLUMNS_2;
-        break;
-      case SORT_VIEW_COLUMNS_3:
-        SETTINGS.bookshelfColumns = CrossPointSettings::BOOKSHELF_COLUMNS_3;
+      case SORT_VIEW_COLUMNS:
+        SETTINGS.bookshelfColumns = SETTINGS.bookshelfColumns == CrossPointSettings::BOOKSHELF_COLUMNS_2
+                                        ? CrossPointSettings::BOOKSHELF_COLUMNS_3
+                                        : CrossPointSettings::BOOKSHELF_COLUMNS_2;
         break;
       case SORT_VIEW_BROWSE_FILES:
         libraryView = LIBRARY_VIEW_FILES;
@@ -1565,20 +1598,19 @@ int FileBrowserActivity::getBookshelfColumns() const {
 }
 
 int FileBrowserActivity::getBookshelfCardHeight() const {
-  if (isLibraryDashboard()) return getBookshelfColumns() == 2 ? 246 : 214;
-  if (isLibraryShelf()) return getBookshelfColumns() == 2 ? 252 : 236;
-  if (basepath != "/") return getBookshelfColumns() == 2 ? 252 : 236;
-  return getBookshelfColumns() == 2 ? 246 : 214;
+  if (isLibraryDashboard()) return getBookshelfColumns() == 2 ? 188 : 132;
+  if (isLibraryShelf()) return getBookshelfColumns() == 2 ? 214 : 154;
+  if (basepath != "/") return getBookshelfColumns() == 2 ? 214 : 154;
+  return getBookshelfColumns() == 2 ? 188 : 132;
 }
 
 int FileBrowserActivity::getPageItems(const int contentHeight) const {
   if (isBookshelfMode()) {
     if (isLibraryDashboard()) {
-      const int shelfHeight = 82;
       const int rowStride = getBookshelfCardHeight() + BOOKSHELF_CARD_GAP;
-      const int listHeight = std::max(0, contentHeight - shelfHeight - BOOKSHELF_CARD_GAP * 2);
+      const int listHeight = std::max(0, contentHeight - LIBRARY_SECTION_LABEL_HEIGHT);
       const int rows = std::max(1, (listHeight + BOOKSHELF_CARD_GAP) / rowStride);
-      return LIBRARY_DASHBOARD_SHORTCUT_COUNT + std::max(1, rows * getBookshelfColumns());
+      return std::max(1, rows * getBookshelfColumns());
     }
     const int rowStride = getBookshelfCardHeight() + BOOKSHELF_CARD_GAP;
     const int rows = std::max(1, (contentHeight + BOOKSHELF_CARD_GAP) / rowStride);
@@ -1777,61 +1809,60 @@ void FileBrowserActivity::renderBookshelf(const Rect& rect, const int pageItems)
 void FileBrowserActivity::renderLibraryDashboard(const Rect& rect, const int pageItems) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int sidePadding = metrics.contentSidePadding;
-  const int shortcutColumns = 2;
   const int bookColumns = getBookshelfColumns();
   const int cardGap = BOOKSHELF_CARD_GAP;
-  const int shelfHeight = 82;
-  const int shortcutCardWidth = (rect.width - sidePadding * 2 - cardGap) / shortcutColumns;
   const int bookCardHeight = getBookshelfCardHeight();
   const int bookCardWidth = (rect.width - sidePadding * 2 - cardGap * (bookColumns - 1)) / bookColumns;
   const int pageStartIndex = (static_cast<int>(selectorIndex) / pageItems) * pageItems;
   const int pageEndIndex = std::min(static_cast<int>(files.size()), pageStartIndex + pageItems);
+  const bool showToReadHeading =
+      pageStartIndex == 0 && !libraryFileStates.empty() && libraryFileStates[0] == LIBRARY_STATE_TO_READ;
+  const int gridTop = rect.y + (showToReadHeading ? LIBRARY_SECTION_LABEL_HEIGHT : 0);
+
+  if (showToReadHeading) {
+    renderer.drawText(SMALL_FONT_ID, sidePadding, rect.y, tr(STR_TO_READ), true, EpdFontFamily::BOLD);
+  }
 
   for (int index = pageStartIndex; index < pageEndIndex; ++index) {
     const int localIndex = index - pageStartIndex;
     const bool selected = selectorIndex == static_cast<size_t>(index);
     const bool isShelf = index >= 0 && index < static_cast<int>(libraryFileStates.size()) &&
+                         index < static_cast<int>(entryPaths.size()) && entryPaths[index].empty() &&
                          (libraryFileStates[index] == LIBRARY_VIEW_TO_READ ||
                           libraryFileStates[index] == LIBRARY_VIEW_FINISHED);
 
-    if (isShelf && pageStartIndex == 0) {
-      const int column = localIndex % shortcutColumns;
-      const Rect card{rect.x + sidePadding + column * (shortcutCardWidth + cardGap), rect.y, shortcutCardWidth,
-                      shelfHeight};
+    const int column = localIndex % bookColumns;
+    const int row = localIndex / bookColumns;
+    const Rect card{rect.x + sidePadding + column * (bookCardWidth + cardGap),
+                    gridTop + row * (bookCardHeight + cardGap), bookCardWidth, bookCardHeight};
+    const Rect inner = insetRect(card, CARD_PAD);
+
+    if (isShelf) {
       drawContainedCard(renderer, card, selected, 5);
 
-      const Rect inner = insetRect(card, 12);
-      const int iconSize = 22;
-      renderer.drawIcon(BookIcon, inner.x, inner.y + 4, iconSize, iconSize);
-      const int textX = inner.x + iconSize + 8;
-      const int textWidth = std::max(0, inner.x + inner.width - textX);
+      const int iconSize = 28;
+      renderer.drawIcon(BookIcon, inner.x + (inner.width - iconSize) / 2, inner.y + 8, iconSize, iconSize);
+      const int textWidth = inner.width;
       const auto titleLines =
           renderer.wrappedText(UI_10_FONT_ID, getEntryTitle(index).c_str(), textWidth, 2, EpdFontFamily::BOLD);
-      int y = inner.y + 2;
+      int y = inner.y + iconSize + 18;
       for (const auto& line : titleLines) {
-        renderer.drawText(UI_10_FONT_ID, textX, y, line.c_str(), true, EpdFontFamily::BOLD);
+        const int lineW = renderer.getTextWidth(UI_10_FONT_ID, line.c_str(), EpdFontFamily::BOLD);
+        renderer.drawText(UI_10_FONT_ID, inner.x + std::max(0, (inner.width - lineW) / 2), y, line.c_str(), true,
+                          EpdFontFamily::BOLD);
         y += renderer.getLineHeight(UI_10_FONT_ID);
       }
       const auto subtitleLines = renderer.wrappedText(SMALL_FONT_ID, getEntrySubtitle(index).c_str(), inner.width, 2);
-      y = std::max(y + 4, inner.y + 36);
+      y += 4;
       for (const auto& line : subtitleLines) {
         if (y > inner.y + inner.height - renderer.getLineHeight(SMALL_FONT_ID)) break;
-        renderer.drawText(SMALL_FONT_ID, inner.x, y, line.c_str(), true);
+        const int lineW = renderer.getTextWidth(SMALL_FONT_ID, line.c_str());
+        renderer.drawText(SMALL_FONT_ID, inner.x + std::max(0, (inner.width - lineW) / 2), y, line.c_str(), true);
         y += renderer.getLineHeight(SMALL_FONT_ID);
       }
       continue;
     }
 
-    const int gridIndex = pageStartIndex == 0 ? localIndex - LIBRARY_DASHBOARD_SHORTCUT_COUNT : localIndex;
-    if (gridIndex < 0) {
-      continue;
-    }
-    const int column = gridIndex % bookColumns;
-    const int row = gridIndex / bookColumns;
-    const int gridTop = pageStartIndex == 0 ? rect.y + shelfHeight + cardGap * 2 : rect.y;
-    const Rect card{rect.x + sidePadding + column * (bookCardWidth + cardGap),
-                    gridTop + row * (bookCardHeight + cardGap), bookCardWidth, bookCardHeight};
-    const Rect inner = insetRect(card, CARD_PAD);
     const Rect coverRect = calculateBookCoverRect(card, inner, inner.y + inner.height + 12, 0, 0);
     const bool coverDrawn =
         index >= 0 && index < static_cast<int>(entryCoverPaths.size()) && drawCachedCover(renderer, entryCoverPaths[index], coverRect);
@@ -1978,7 +2009,9 @@ void FileBrowserActivity::render(RenderLock&&) {
       snprintf(leftTruncBuf, sizeof(leftTruncBuf), "%s%s", ellipsis, p);
       pathDisplay = leftTruncBuf;
     }
-    renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding, pathY, pathDisplay);
+    const int textW = renderer.getTextWidth(SMALL_FONT_ID, pathDisplay);
+    const int textX = metrics.contentSidePadding + std::max(0, (pathMaxWidth - textW) / 2);
+    renderer.drawText(SMALL_FONT_ID, textX, pathY, pathDisplay);
   }
 
   if (SETTINGS.advancedStatusHeader && isBookshelfMode()) {

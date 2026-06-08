@@ -44,6 +44,9 @@ constexpr unsigned long RECENT_BOOK_LONG_PRESS_MS = 1400;
 constexpr unsigned long HOLD_PREVIEW_MS = 250;
 constexpr int HOME_SHORTCUT_PAGE_SIZE = 4;
 constexpr int LYRA_VCODEX2_COMPACT_DASHBOARD_HEIGHT = 286;
+constexpr int LYRA_VCODEX2_SUMMARY_HEIGHT = 58;
+constexpr int LYRA_VCODEX2_UP_NEXT_HEIGHT = 72;
+constexpr int HOME_SELECTION_RADIUS = 6;
 int savedHomeSelectorIndex = 0;
 
 std::string getRecentBookConfirmationLabel(const RecentBook& book) {
@@ -325,6 +328,34 @@ int HomeActivity::getDashboardSelectionState() const {
   return -1;
 }
 
+void HomeActivity::drawDashboardSelectionOverlay(const Rect& rect) {
+  if (recentBooks.empty() || selectorIndex < 0 || selectorIndex >= static_cast<int>(recentBooks.size())) {
+    return;
+  }
+
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  Rect focus{rect.x + metrics.contentSidePadding, rect.y, rect.width - metrics.contentSidePadding * 2, rect.height};
+  if (SETTINGS.uiTheme == CrossPointSettings::LYRA_VCODEX2) {
+    const bool showUpNext = SETTINGS.showCurrentBookCard != 0 && recentBooks.size() > 1;
+    if (showUpNext) {
+      const int heroHeight =
+          rect.height - LYRA_VCODEX2_SUMMARY_HEIGHT - metrics.verticalSpacing - LYRA_VCODEX2_UP_NEXT_HEIGHT;
+      if (selectorIndex == 0) {
+        focus = Rect{rect.x + metrics.contentSidePadding, rect.y, rect.width - metrics.contentSidePadding * 2,
+                     std::max(1, heroHeight)};
+      } else if (selectorIndex == 1) {
+        focus = Rect{rect.x + metrics.contentSidePadding, rect.y + heroHeight + metrics.verticalSpacing,
+                     rect.width - metrics.contentSidePadding * 2, LYRA_VCODEX2_UP_NEXT_HEIGHT};
+      }
+    } else {
+      focus = Rect{rect.x + metrics.contentSidePadding, rect.y, rect.width - metrics.contentSidePadding * 2,
+                   rect.height - LYRA_VCODEX2_SUMMARY_HEIGHT - metrics.verticalSpacing};
+    }
+  }
+
+  renderer.drawRoundedRect(focus.x, focus.y, focus.width, focus.height, 2, HOME_SELECTION_RADIUS, true);
+}
+
 void HomeActivity::loop() {
   const int menuCount = getMenuItemCount();
   const int recentCount = static_cast<int>(recentBooks.size());
@@ -544,13 +575,14 @@ void HomeActivity::render(RenderLock&&) {
   const int dashboardBufferState = recentBooks.empty() ? -1 : static_cast<int>(recentBooks.size());
   bool bufferRestored = coverBufferStored && coverBufferSelectionState == dashboardBufferState && restoreCoverBuffer();
   const int dashboardHeight = getDashboardHeight();
+  const Rect dashboardRect{0, metrics.homeTopPadding, pageWidth, dashboardHeight};
 
   if (!bufferRestored) {
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr, nullptr);
     HeaderDateUtils::drawTopLine(renderer, HeaderDateUtils::getDisplayDateText());
 
-    GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, dashboardHeight},
-                            recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
+    GUI.drawRecentBookCover(renderer, dashboardRect,
+                            recentBooks, -1, coverRendered, coverBufferStored, bufferRestored,
                             std::bind(&HomeActivity::storeCoverBuffer, this));
     if (!coverBufferStored) {
       coverBufferStored = storeCoverBuffer();
@@ -558,6 +590,7 @@ void HomeActivity::render(RenderLock&&) {
     coverBufferSelectionState = coverBufferStored ? dashboardBufferState : -99;
     coverRendered = coverBufferStored;
   }
+  drawDashboardSelectionOverlay(dashboardRect);
 
   const int selectedHomeIndex = selectorIndex - static_cast<int>(recentBooks.size());
   const Rect shortcutsRect{

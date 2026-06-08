@@ -297,6 +297,9 @@ void TxtReaderActivity::onEnter() {
   Activity::onEnter();
   mappedInput.setReaderMode(true);
   mappedInput.setReaderOrientation(SETTINGS.orientation);
+  if (mappedInput.isAnyMappedButtonPressed()) {
+    mappedInput.consumeActiveHoldUntilRelease();
+  }
 
   if (!txt) {
     return;

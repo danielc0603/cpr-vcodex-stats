@@ -240,6 +240,9 @@ void EpubReaderActivity::onEnter() {
   mappedInput.setReaderMode(true);
   activeReaderOrientation = SETTINGS.orientation;
   mappedInput.setReaderOrientation(activeReaderOrientation);
+  if (mappedInput.isAnyMappedButtonPressed()) {
+    mappedInput.consumeActiveHoldUntilRelease();
+  }
 
   if (!epub) {
     return;
