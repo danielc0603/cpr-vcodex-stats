@@ -350,7 +350,17 @@ bool loadSettingsDirect(CrossPointSettings& s, const JsonDocument& doc, bool* ne
   loadEnum("sleepTimeout", s.sleepTimeout, CrossPointSettings::SLEEP_TIMEOUT_COUNT);
   loadToggle("showHiddenFiles", s.showHiddenFiles);
   loadEnum("fileBrowserView", s.fileBrowserView, CrossPointSettings::FILE_BROWSER_VIEW_COUNT);
-  loadEnum("bookshelfColumns", s.bookshelfColumns, CrossPointSettings::BOOKSHELF_COLUMNS_COUNT);
+  loadEnum("libraryDefaultView", s.libraryDefaultView, CrossPointSettings::LIBRARY_DEFAULT_VIEW_COUNT);
+  if (doc["bookshelfColumns"].is<int>()) {
+    const int savedBookshelfLayout = doc["bookshelfColumns"].as<int>();
+    if (savedBookshelfLayout == 3) {
+      s.bookshelfColumns = CrossPointSettings::BOOKSHELF_LAYOUT_3X4;
+    } else {
+      loadEnum("bookshelfColumns", s.bookshelfColumns, CrossPointSettings::BOOKSHELF_COLUMNS_COUNT);
+    }
+  } else {
+    loadEnum("bookshelfColumns", s.bookshelfColumns, CrossPointSettings::BOOKSHELF_COLUMNS_COUNT);
+  }
   loadEnum("librarySort", s.librarySort, CrossPointSettings::LIBRARY_SORT_COUNT);
   if (s.librarySort >= CrossPointSettings::LIBRARY_SORT_COUNT) {
     s.librarySort = CrossPointSettings::LIBRARY_SORT_TITLE;
@@ -702,6 +712,7 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   doc["sleepTimeout"] = s.sleepTimeout;
   doc["showHiddenFiles"] = s.showHiddenFiles;
   doc["fileBrowserView"] = s.fileBrowserView;
+  doc["libraryDefaultView"] = s.libraryDefaultView;
   doc["bookshelfColumns"] = s.bookshelfColumns;
   doc["librarySort"] = s.librarySort;
   doc["advancedStatusHeader"] = s.advancedStatusHeader;

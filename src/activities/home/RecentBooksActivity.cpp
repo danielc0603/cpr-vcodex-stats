@@ -298,7 +298,15 @@ void RecentBooksActivity::render(RenderLock&&) {
   if (gridView && !recentBooks.empty()) {
     const int pageStart = (static_cast<int>(selectorIndex) / pageItems) * pageItems;
     if (pageStart != loadedPageStart) {
-      const bool generated = RecentBooksGrid::loadPageCovers(renderer, recentBooks, pageStart, pageItems);
+      const int pageCount = std::min(pageItems, static_cast<int>(recentBooks.size()) - pageStart);
+      const int metadataTop = contentTop + contentHeight - RecentBooksGrid::kTitleStripHeight;
+      const int dividerY = metadataTop - RecentBooksGrid::kMetadataDividerGap;
+      const Rect gridRect{metrics.contentSidePadding, contentTop,
+                          pageWidth - metrics.contentSidePadding * 2,
+                          std::max(1, dividerY - RecentBooksGrid::kMetadataDividerGap - contentTop)};
+      const Rect coverRect = RecentBooksGrid::dynamicCoverRect(gridRect, pageCount, 0);
+      const bool generated =
+          RecentBooksGrid::loadPageCovers(renderer, recentBooks, pageStart, pageItems, coverRect.width, coverRect.height);
       loadedPageStart = pageStart;
       if (generated) {
         requestUpdate();

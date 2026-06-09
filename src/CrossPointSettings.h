@@ -254,14 +254,15 @@ class CrossPointSettings {
   };
   enum SLEEP_IMAGE_ORDER { SLEEP_IMAGE_SHUFFLE = 0, SLEEP_IMAGE_SEQUENTIAL = 1, SLEEP_IMAGE_ORDER_COUNT };
   enum FILE_BROWSER_VIEW { FILE_BROWSER_LIST = 0, FILE_BROWSER_BOOKSHELF = 1, FILE_BROWSER_VIEW_COUNT };
+  enum LIBRARY_DEFAULT_VIEW { LIBRARY_VIEW_COVER = 0, LIBRARY_VIEW_FILES = 1, LIBRARY_DEFAULT_VIEW_COUNT };
   enum BOOKSHELF_COLUMNS {
     BOOKSHELF_LAYOUT_2X2 = 0,
-    BOOKSHELF_LAYOUT_2X3 = 1,
-    BOOKSHELF_LAYOUT_3X3 = 2,
-    BOOKSHELF_LAYOUT_3X4 = 3,
+    BOOKSHELF_LAYOUT_3X3 = 1,
+    BOOKSHELF_LAYOUT_3X4 = 2,
     BOOKSHELF_COLUMNS_2 = BOOKSHELF_LAYOUT_2X2,
     BOOKSHELF_COLUMNS_3 = BOOKSHELF_LAYOUT_3X3,
-    BOOKSHELF_COLUMNS_COUNT = 4
+    BOOKSHELF_COLUMNS_COUNT = 3,
+    BOOKSHELF_LAYOUT_2X3 = BOOKSHELF_LAYOUT_3X3
   };
   enum LIBRARY_SORT {
     LIBRARY_SORT_TITLE = 0,
@@ -434,7 +435,8 @@ class CrossPointSettings {
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
   uint8_t showHiddenFiles = 0;
   uint8_t fileBrowserView = FILE_BROWSER_BOOKSHELF;
-  uint8_t bookshelfColumns = BOOKSHELF_LAYOUT_2X3;
+  uint8_t libraryDefaultView = LIBRARY_VIEW_COVER;
+  uint8_t bookshelfColumns = BOOKSHELF_LAYOUT_3X3;
   uint8_t librarySort = LIBRARY_SORT_TITLE;
   uint8_t advancedStatusHeader = 1;
   uint8_t recentBooksView = RECENT_BOOKS_GRID;

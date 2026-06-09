@@ -69,6 +69,8 @@ class FileBrowserActivity final : public Activity {
   void saveLibraryDashboardSnapshot() const;
   bool restoreLibraryDashboardIndex();
   void saveLibraryDashboardIndex() const;
+  bool isLibraryRootSignatureChanged() const;
+  void saveLibraryRootSignature() const;
   bool processLibraryIndexJob();
   void addLibraryBookByPath(const std::string& path);
   bool isBadLibraryPath(const std::string& path) const;
@@ -91,6 +93,8 @@ class FileBrowserActivity final : public Activity {
   int getBookshelfRows() const;
   int getBookshelfCardHeight() const;
   int getPageItems(const int contentHeight) const;
+  std::vector<int> getVisibleDashboardIndices() const;
+  int getVisibleDashboardPosition(const std::vector<int>& visibleIndices) const;
   uint16_t countFolderItems(const std::string& folderName) const;
   std::string getFullPathForEntry(const std::string& entry) const;
   std::string getLibraryStateLabel(int index) const;
@@ -98,6 +102,7 @@ class FileBrowserActivity final : public Activity {
   std::string getEntrySubtitle(int index) const;
   void moveBookshelfHorizontal(int delta);
   void moveBookshelfVertical(int delta);
+  void moveBookshelfPage(int delta, int pageItems);
   void renderBookshelf(const Rect& rect, const int pageItems);
   void renderLibraryDashboard(const Rect& rect, const int pageItems);
   void renderPageIndicator(const Rect& rect, int pageItems) const;

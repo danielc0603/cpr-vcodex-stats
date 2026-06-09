@@ -93,7 +93,9 @@ inline void ensureReusableCoverPath(RecentBook& book) {
   updateRecentBookCoverPath(book, reusablePath);
 }
 
-inline bool needsCoverThumbGeneration(const RecentBook& book, const std::string& thumbPath) {
+inline bool needsCoverThumbGeneration(const RecentBook& book, const std::string& thumbPath,
+                                      const int expectedWidth = kCoverWidth,
+                                      const int expectedHeight = kCoverHeight) {
   if (thumbPath.empty() || !Storage.exists(thumbPath.c_str())) {
     return true;
   }
@@ -107,7 +109,8 @@ inline bool needsCoverThumbGeneration(const RecentBook& book, const std::string&
   }
   Bitmap bitmap(file);
   const bool hasExpectedSize =
-      bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == kCoverWidth && bitmap.getHeight() == kCoverHeight;
+      bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() == expectedWidth &&
+      bitmap.getHeight() == expectedHeight;
   file.close();
   return !hasExpectedSize;
 }
@@ -227,7 +230,8 @@ inline int moveVertical(const int currentIndex, const int totalItems, const int 
          localIndexForRowColumn(previousPageCount, rowsForLayout(previousPageCount) - 1, currentColumn);
 }
 
-inline void calculateCoverFillCrop(const Bitmap& bitmap, float& cropX, float& cropY) {
+inline void calculateCoverFillCrop(const Bitmap& bitmap, float& cropX, float& cropY,
+                                   const int targetWidth = kCoverWidth, const int targetHeight = kCoverHeight) {
   cropX = 0.0f;
   cropY = 0.0f;
   const float srcW = static_cast<float>(bitmap.getWidth());
@@ -235,7 +239,7 @@ inline void calculateCoverFillCrop(const Bitmap& bitmap, float& cropX, float& cr
   if (srcW <= 0.0f || srcH <= 0.0f) return;
 
   const float srcRatio = srcW / srcH;
-  const float targetRatio = static_cast<float>(kCoverWidth) / static_cast<float>(kCoverHeight);
+  const float targetRatio = static_cast<float>(std::max(1, targetWidth)) / static_cast<float>(std::max(1, targetHeight));
   if (srcRatio > targetRatio) {
     cropX = std::max(0.0f, 1.0f - (targetRatio / srcRatio));
   } else if (srcRatio < targetRatio) {
@@ -262,9 +266,12 @@ inline void ensurePageProgress(std::vector<BookState>& books, const int pageStar
 }
 
 inline bool loadPageCovers(GfxRenderer& renderer, std::vector<BookState>& books, const int pageStart,
-                           const int itemsPerPage) {
+                           const int itemsPerPage, const int targetWidth = kCoverWidth,
+                           const int targetHeight = kCoverHeight) {
   if (pageStart < 0 || itemsPerPage <= 0) return false;
   const int pageEnd = std::min(pageStart + itemsPerPage, static_cast<int>(books.size()));
+  const int safeWidth = std::max(1, targetWidth);
+  const int safeHeight = std::max(1, targetHeight);
 
   bool needsGeneration = false;
   for (int index = pageStart; index < pageEnd; ++index) {
@@ -274,9 +281,9 @@ inline bool loadPageCovers(GfxRenderer& renderer, std::vector<BookState>& books,
       books[index].coverPath = "";
       continue;
     }
-    const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, kCoverWidth, kCoverHeight);
+    const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, safeWidth, safeHeight);
     books[index].coverPath = (!thumbPath.empty() && Storage.exists(thumbPath.c_str())) ? thumbPath : "";
-    if (needsCoverThumbGeneration(book, thumbPath)) {
+    if (needsCoverThumbGeneration(book, thumbPath, safeWidth, safeHeight)) {
       needsGeneration = true;
     }
   }
@@ -292,8 +299,8 @@ inline bool loadPageCovers(GfxRenderer& renderer, std::vector<BookState>& books,
   for (int index = pageStart; index < pageEnd; ++index) {
     RecentBook& book = books[index].book;
     const std::string coverPath =
-        book.coverBmpPath.empty() ? "" : UITheme::getCoverThumbPath(book.coverBmpPath, kCoverWidth, kCoverHeight);
-    if (needsCoverThumbGeneration(book, coverPath)) {
+        book.coverBmpPath.empty() ? "" : UITheme::getCoverThumbPath(book.coverBmpPath, safeWidth, safeHeight);
+    if (needsCoverThumbGeneration(book, coverPath, safeWidth, safeHeight)) {
       if (FsHelpers::hasEpubExtension(book.path)) {
         Epub epub(book.path, "/.crosspoint");
         if (epub.load(false, true)) {
@@ -302,11 +309,11 @@ inline bool loadPageCovers(GfxRenderer& renderer, std::vector<BookState>& books,
             popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
           }
           GUI.fillPopupProgress(renderer, popupRect, 10 + (processedCount * 90) / totalToProcess);
-          if (epub.generateThumbBmp(kCoverWidth, kCoverHeight)) {
+          if (epub.generateThumbBmp(safeWidth, safeHeight)) {
             const std::string reusablePath = epub.getThumbBmpPath();
             book.coverBmpPath = reusablePath;
             updateRecentBookCoverPath(book, reusablePath);
-            books[index].coverPath = UITheme::getCoverThumbPath(reusablePath, kCoverWidth, kCoverHeight);
+            books[index].coverPath = UITheme::getCoverThumbPath(reusablePath, safeWidth, safeHeight);
           } else {
             updateRecentBookCoverPath(book, "");
             book.coverBmpPath = "";
@@ -321,11 +328,11 @@ inline bool loadPageCovers(GfxRenderer& renderer, std::vector<BookState>& books,
             popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
           }
           GUI.fillPopupProgress(renderer, popupRect, 10 + (processedCount * 90) / totalToProcess);
-          if (xtc.generateThumbBmp(kCoverWidth, kCoverHeight)) {
+          if (xtc.generateThumbBmp(safeWidth, safeHeight)) {
             const std::string reusablePath = xtc.getThumbBmpPath();
             book.coverBmpPath = reusablePath;
             updateRecentBookCoverPath(book, reusablePath);
-            books[index].coverPath = UITheme::getCoverThumbPath(reusablePath, kCoverWidth, kCoverHeight);
+            books[index].coverPath = UITheme::getCoverThumbPath(reusablePath, safeWidth, safeHeight);
           } else {
             updateRecentBookCoverPath(book, "");
             book.coverBmpPath = "";
@@ -408,7 +415,7 @@ inline void drawGrid(GfxRenderer& renderer, const std::vector<BookState>& books,
     bool drawn = false;
     std::string thumbPath = books[bookIndex].coverPath;
     if (thumbPath.empty() && !books[bookIndex].book.coverBmpPath.empty()) {
-      thumbPath = UITheme::getCoverThumbPath(books[bookIndex].book.coverBmpPath, kCoverWidth, kCoverHeight);
+      thumbPath = UITheme::getCoverThumbPath(books[bookIndex].book.coverBmpPath, cover.width, cover.height);
     }
     if (!thumbPath.empty() && Storage.exists(thumbPath.c_str())) {
       FsFile file;
@@ -417,7 +424,7 @@ inline void drawGrid(GfxRenderer& renderer, const std::vector<BookState>& books,
         if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
           float cropX = 0.0f;
           float cropY = 0.0f;
-          calculateCoverFillCrop(bitmap, cropX, cropY);
+          calculateCoverFillCrop(bitmap, cropX, cropY, cover.width, cover.height);
           renderer.fillRoundedRect(cover.x, cover.y, cover.width, cover.height, kCoverCornerRadius, Color::White);
           renderer.drawBitmap(bitmap, cover.x, cover.y, cover.width, cover.height, cropX, cropY);
           renderer.maskRoundedRectOutsideCorners(cover.x, cover.y, cover.width, cover.height, kCoverCornerRadius,
@@ -473,7 +480,7 @@ inline void drawGridDynamic(GfxRenderer& renderer, const std::vector<BookState>&
     bool drawn = false;
     std::string thumbPath = books[bookIndex].coverPath;
     if (thumbPath.empty() && !books[bookIndex].book.coverBmpPath.empty()) {
-      thumbPath = UITheme::getCoverThumbPath(books[bookIndex].book.coverBmpPath, kCoverWidth, kCoverHeight);
+      thumbPath = UITheme::getCoverThumbPath(books[bookIndex].book.coverBmpPath, cover.width, cover.height);
     }
     if (!thumbPath.empty() && Storage.exists(thumbPath.c_str())) {
       FsFile file;
@@ -482,7 +489,7 @@ inline void drawGridDynamic(GfxRenderer& renderer, const std::vector<BookState>&
         if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
           float cropX = 0.0f;
           float cropY = 0.0f;
-          calculateCoverFillCrop(bitmap, cropX, cropY);
+          calculateCoverFillCrop(bitmap, cropX, cropY, cover.width, cover.height);
           renderer.fillRoundedRect(cover.x, cover.y, cover.width, cover.height, kCoverCornerRadius, Color::White);
           renderer.drawBitmap(bitmap, cover.x, cover.y, cover.width, cover.height, cropX, cropY);
           renderer.maskRoundedRectOutsideCorners(cover.x, cover.y, cover.width, cover.height, kCoverCornerRadius,

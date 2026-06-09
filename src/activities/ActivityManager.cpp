@@ -2,6 +2,7 @@
 
 #include <HalPowerManager.h>
 
+#include "CrossPointSettings.h"
 #include "OpdsServerStore.h"
 #include "apps/AppsActivity.h"
 #include "boot_sleep/BootActivity.h"
@@ -181,7 +182,7 @@ void ActivityManager::goToSettings() { replaceActivity(std::make_unique<Settings
 void ActivityManager::goToApps() { replaceActivity(std::make_unique<AppsActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToFileBrowser(std::string path) {
-  const bool rawFiles = !path.empty();
+  const bool rawFiles = !path.empty() || SETTINGS.libraryDefaultView == CrossPointSettings::LIBRARY_VIEW_FILES;
   replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, rawFiles ? std::move(path) : "/",
                                                         rawFiles));
 }

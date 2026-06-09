@@ -175,7 +175,17 @@ void ReaderRecentBooksActivity::render(RenderLock&&) {
         RecentBooksGrid::itemsPerPageForCount(static_cast<int>(books.size()), RecentBooksGrid::kQuickItemsPerPage);
     const int pageStart = (selectedIndex / pageItems) * pageItems;
     if (pageStart != loadedPageStart) {
-      const bool generated = RecentBooksGrid::loadPageCovers(renderer, books, pageStart, pageItems);
+      const int pageCount = std::min(pageItems, static_cast<int>(books.size()) - pageStart);
+      const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+      const int gridTop = contentTop + RecentBooksGrid::kTitleStripHeight + RecentBooksGrid::kTitleGridGap;
+      const int dotsReserve = static_cast<int>(books.size()) > pageItems ? 24 : 0;
+      const Rect gridRect{metrics.contentSidePadding, gridTop,
+                          pageWidth - metrics.contentSidePadding * 2,
+                          std::max(1, pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - dotsReserve -
+                                          gridTop)};
+      const Rect coverRect = RecentBooksGrid::dynamicCoverRect(gridRect, pageCount, 0);
+      const bool generated =
+          RecentBooksGrid::loadPageCovers(renderer, books, pageStart, pageItems, coverRect.width, coverRect.height);
       loadedPageStart = pageStart;
       if (generated) {
         requestUpdate();
