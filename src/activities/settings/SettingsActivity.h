@@ -53,7 +53,7 @@ struct SettingInfo {
   std::vector<StrId> enumValues;
   std::vector<uint8_t> enumRawValues;
   SettingAction action = SettingAction::None;
-  enum class Visibility { Always, FrontOrientationTarget, SideOrientationTarget };
+  enum class Visibility { Always, FrontOrientationTarget, SideOrientationTarget, LibraryCoverView };
   Visibility visibility = Visibility::Always;
 
   struct ValueRange {

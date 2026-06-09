@@ -24,6 +24,7 @@ class FileBrowserActivity final : public Activity {
   bool confirmLongPressHandled = false;
   bool backLongPressHandled = false;
   bool holdPreviewVisible = false;
+  bool sortPreviewVisible = false;
   uint8_t libraryView = 0;
   bool rawFilesLaunch = false;
   unsigned long lastNavigationInputMs = 0;

@@ -2084,6 +2084,7 @@ void FileBrowserActivity::clearFileMetadata(const std::string& fullPath) {
 void FileBrowserActivity::loop() {
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     backLongPressHandled = false;
+    sortPreviewVisible = false;
     libraryWorkPaused = true;
   }
 
@@ -2101,9 +2102,20 @@ void FileBrowserActivity::loop() {
     return;
   }
 
-  if (isBookshelfMode() && basepath == "/" && isLibraryDashboard() && mappedInput.isPressed(MappedInputManager::Button::Back) &&
+  const bool backCanOpenSortView =
+      isBookshelfMode() && basepath == "/" && (isLibraryDashboard() || isRawBrowseFilesMode());
+
+  if (backCanOpenSortView && mappedInput.isPressed(MappedInputManager::Button::Back) && !backLongPressHandled &&
+      mappedInput.getHeldTime() >= HOLD_PREVIEW_MS && mappedInput.getHeldTime() < GO_HOME_MS && !sortPreviewVisible &&
+      !lockLongPressBack) {
+    sortPreviewVisible = true;
+    requestUpdate();
+  }
+
+  if (backCanOpenSortView && mappedInput.isPressed(MappedInputManager::Button::Back) &&
       !backLongPressHandled && mappedInput.getHeldTime() >= GO_HOME_MS && !lockLongPressBack) {
     backLongPressHandled = true;
+    sortPreviewVisible = false;
     mappedInput.consumeActiveHoldUntilRelease();
     openSortViewMenu();
     return;
@@ -2111,6 +2123,7 @@ void FileBrowserActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backLongPressHandled) {
     backLongPressHandled = false;
+    sortPreviewVisible = false;
     libraryWorkPaused = false;
     return;
   }
@@ -2131,6 +2144,7 @@ void FileBrowserActivity::loop() {
 
   if (lockLongPressBack && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     lockLongPressBack = false;
+    sortPreviewVisible = false;
     libraryWorkPaused = false;
     return;
   }
@@ -2255,6 +2269,11 @@ void FileBrowserActivity::loop() {
     lastNavigationInputMs = millis();
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
+      if (sortPreviewVisible) {
+        sortPreviewVisible = false;
+        requestUpdate();
+        return;
+      }
       if (basepath != "/") {
         const std::string oldPath = basepath;
 
@@ -3250,18 +3269,10 @@ void FileBrowserActivity::render(RenderLock&&) {
       mappedInput.mapLabels((basepath == "/" && !isLibraryShelf() && libraryView != LIBRARY_VIEW_FILES) ? tr(STR_HOME) : tr(STR_BACK), files.empty() ? "" : tr(STR_OPEN),
                             files.empty() ? "" : tr(STR_DIR_UP), files.empty() ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  if (usesBookshelfGrid() && !files.empty()) {
-    const std::string hintText = std::string(tr(STR_HOLD)) + " " + tr(STR_BACK) + ": " + tr(STR_SORT_VIEW) + "  |  " +
-                                 tr(STR_HOLD) + " " + tr(STR_OPEN) + ": " + tr(STR_BOOK_ACTIONS);
-    const int maxHintWidth = pageWidth - metrics.contentSidePadding * 2;
-    const std::string safeHint = renderer.truncatedText(SMALL_FONT_ID, hintText.c_str(), maxHintWidth);
-    const int hintWidth = renderer.getTextWidth(SMALL_FONT_ID, safeHint.c_str());
-    const int hintX = metrics.contentSidePadding + std::max(0, (maxHintWidth - hintWidth) / 2);
-    const int hintY = pageHeight - metrics.buttonHintsHeight + 2;
-    renderer.drawText(SMALL_FONT_ID, hintX, hintY, safeHint.c_str(), true);
-  }
   if (holdPreviewVisible) {
     drawHoldPreview(renderer, tr(STR_BOOK_ACTIONS));
+  } else if (sortPreviewVisible) {
+    drawHoldPreview(renderer, tr(STR_SORT_VIEW));
   }
 
   libraryFirstRenderDone = true;

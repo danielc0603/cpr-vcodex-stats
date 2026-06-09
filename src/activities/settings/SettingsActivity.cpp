@@ -104,20 +104,9 @@ const std::vector<SettingInfo>& getDeviceDisplaySettings() {
                         {StrId::STR_NONE_OPT, StrId::STR_FILTER_CONTRAST, StrId::STR_INVERTED}),
       SettingInfo::Enum(StrId::STR_SLEEP_REFRESH, &CrossPointSettings::sleepRefreshMode,
                         {StrId::STR_STATE_OFF, StrId::STR_SLEEP_REFRESH_SOFT, StrId::STR_SLEEP_REFRESH_FULL}),
-      SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
-                        {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}),
       SettingInfo::Enum(
           StrId::STR_REFRESH_FREQ, &CrossPointSettings::refreshFrequency,
           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15, StrId::STR_PAGES_30}),
-      SettingInfo::Enum(StrId::STR_MENU_RECENT_BOOKS, &CrossPointSettings::recentBooksView,
-                        {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_GRID}),
-      SettingInfo::Enum(StrId::STR_LIBRARY_COLUMNS, &CrossPointSettings::bookshelfColumns,
-                        {StrId::STR_LAYOUT_2X2, StrId::STR_LAYOUT_3X3, StrId::STR_LAYOUT_3X4}),
-      SettingInfo::Enum(StrId::STR_LIBRARY_VIEW, &CrossPointSettings::libraryDefaultView,
-                        {StrId::STR_COVER_LIBRARY, StrId::STR_FILE_LIST}),
-      SettingInfo::Enum(StrId::STR_LIBRARY_SORT_BY, &CrossPointSettings::librarySort,
-                        {StrId::STR_TITLE, StrId::STR_AUTHOR, StrId::STR_RECENT_BOOKS, StrId::STR_PROGRESS}),
-      SettingInfo::Toggle(StrId::STR_LIBRARY_STATUS, &CrossPointSettings::advancedStatusHeader),
       SettingInfo::Toggle(StrId::STR_SHOW_CURRENT_BOOK_CARD, &CrossPointSettings::showCurrentBookCard),
       SettingInfo::Toggle(StrId::STR_DARK_MODE, &CrossPointSettings::darkMode),
       SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix),
@@ -202,6 +191,20 @@ const std::vector<SettingInfo>& getDeviceSystemSettings() {
   static const std::vector<SettingInfo> settings = {
       SettingInfo::Enum(StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeout,
                         {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30}),
+      SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
+                        {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}),
+      SettingInfo::Enum(StrId::STR_MENU_RECENT_BOOKS, &CrossPointSettings::recentBooksView,
+                        {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_GRID}),
+      SettingInfo::Enum(StrId::STR_LIBRARY_VIEW, &CrossPointSettings::libraryDefaultView,
+                        {StrId::STR_COVER_LIBRARY, StrId::STR_FILE_LIST}),
+      SettingInfo::Enum(StrId::STR_LIBRARY_COLUMNS, &CrossPointSettings::bookshelfColumns,
+                        {StrId::STR_LAYOUT_2X2, StrId::STR_LAYOUT_3X3, StrId::STR_LAYOUT_3X4})
+          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
+      SettingInfo::Enum(StrId::STR_LIBRARY_SORT_BY, &CrossPointSettings::librarySort,
+                        {StrId::STR_TITLE, StrId::STR_AUTHOR, StrId::STR_RECENT_BOOKS, StrId::STR_PROGRESS})
+          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
+      SettingInfo::Toggle(StrId::STR_LIBRARY_STATUS, &CrossPointSettings::advancedStatusHeader)
+          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
       SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles),
       SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network),
       SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync),
@@ -469,6 +472,9 @@ bool shouldShowDeviceSetting(const SettingInfo& setting) {
   }
   if (setting.visibility == SettingInfo::Visibility::SideOrientationTarget) {
     return SETTINGS.sideButtonLongPress == CrossPointSettings::SIDE_LONG_ORIENTATION_CHANGE;
+  }
+  if (setting.visibility == SettingInfo::Visibility::LibraryCoverView) {
+    return SETTINGS.libraryDefaultView == CrossPointSettings::LIBRARY_VIEW_COVER;
   }
   if (setting.nameId == StrId::STR_FILE_BROWSER_VIEW) {
     return true;
