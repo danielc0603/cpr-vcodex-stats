@@ -46,6 +46,8 @@ constexpr int HOME_SHORTCUT_PAGE_SIZE = 4;
 constexpr int LYRA_VCODEX2_COMPACT_DASHBOARD_HEIGHT = 286;
 constexpr int LYRA_VCODEX2_SUMMARY_HEIGHT = 58;
 constexpr int LYRA_VCODEX2_UP_NEXT_HEIGHT = 72;
+constexpr int LYRA_VCODEX2_SUMMARY_GAP = 12;
+constexpr int LYRA_VCODEX2_UP_NEXT_GAP = 8;
 constexpr int HOME_SELECTION_RADIUS = 6;
 int savedHomeSelectorIndex = 0;
 
@@ -339,20 +341,24 @@ void HomeActivity::drawDashboardSelectionOverlay(const Rect& rect) {
     const bool showUpNext = SETTINGS.showCurrentBookCard != 0 && recentBooks.size() > 1;
     if (showUpNext) {
       const int heroHeight =
-          rect.height - LYRA_VCODEX2_SUMMARY_HEIGHT - metrics.verticalSpacing - LYRA_VCODEX2_UP_NEXT_HEIGHT;
+          rect.height - LYRA_VCODEX2_SUMMARY_HEIGHT - LYRA_VCODEX2_SUMMARY_GAP - LYRA_VCODEX2_UP_NEXT_HEIGHT -
+          LYRA_VCODEX2_UP_NEXT_GAP;
       if (selectorIndex == 0) {
         focus = Rect{rect.x + metrics.contentSidePadding, rect.y, rect.width - metrics.contentSidePadding * 2,
                      std::max(1, heroHeight)};
       } else if (selectorIndex == 1) {
-        focus = Rect{rect.x + metrics.contentSidePadding, rect.y + heroHeight + metrics.verticalSpacing,
+        focus = Rect{rect.x + metrics.contentSidePadding, rect.y + heroHeight + LYRA_VCODEX2_UP_NEXT_GAP,
                      rect.width - metrics.contentSidePadding * 2, LYRA_VCODEX2_UP_NEXT_HEIGHT};
       }
     } else {
       focus = Rect{rect.x + metrics.contentSidePadding, rect.y, rect.width - metrics.contentSidePadding * 2,
-                   rect.height - LYRA_VCODEX2_SUMMARY_HEIGHT - metrics.verticalSpacing};
+                   rect.height - LYRA_VCODEX2_SUMMARY_HEIGHT - LYRA_VCODEX2_SUMMARY_GAP};
     }
   }
 
+  constexpr int focusInset = 2;
+  focus = Rect{focus.x + focusInset, focus.y + focusInset, std::max(1, focus.width - focusInset * 2),
+               std::max(1, focus.height - focusInset * 2)};
   renderer.drawRoundedRect(focus.x, focus.y, focus.width, focus.height, 2, HOME_SELECTION_RADIUS, true);
 }
 

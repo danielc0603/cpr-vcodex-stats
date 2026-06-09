@@ -3,6 +3,9 @@
 
 class CrashActivity final : public Activity {
   std::string panicMessage;
+  std::string crashReason;
+  std::string crashLocation;
+  std::string libraryBreadcrumb;
 
  public:
   explicit CrashActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

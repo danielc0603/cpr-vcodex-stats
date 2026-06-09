@@ -181,7 +181,9 @@ void ActivityManager::goToSettings() { replaceActivity(std::make_unique<Settings
 void ActivityManager::goToApps() { replaceActivity(std::make_unique<AppsActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToFileBrowser(std::string path) {
-  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
+  const bool rawFiles = !path.empty();
+  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, rawFiles ? std::move(path) : "/",
+                                                        rawFiles));
 }
 
 void ActivityManager::goToRecentBooks() {

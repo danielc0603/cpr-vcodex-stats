@@ -25,6 +25,7 @@ class FileBrowserActivity final : public Activity {
   bool backLongPressHandled = false;
   bool holdPreviewVisible = false;
   uint8_t libraryView = 0;
+  bool rawFilesLaunch = false;
   unsigned long lastNavigationInputMs = 0;
 
   // Files state
@@ -41,7 +42,22 @@ class FileBrowserActivity final : public Activity {
   std::vector<std::string> entryCoverSourcePaths;
   std::vector<uint8_t> entryCoverStates;
   std::vector<std::string> libraryScanFolders;
+  std::vector<size_t> libraryScanOffsets;
+  std::string libraryCurrentScanFolder;
   bool libraryIndexingActive = false;
+  bool libraryFirstRenderDone = false;
+  bool librarySafeMode = false;
+  bool libraryRendering = false;
+  bool libraryWorkPaused = false;
+  bool libraryScanRequested = false;
+  bool librarySkippedFolderShown = false;
+  bool libraryBreadcrumbClearedThisSession = false;
+  uint8_t libraryFailureCount = 0;
+  unsigned long libraryEnteredAtMs = 0;
+  unsigned long lastLibraryWorkMs = 0;
+  unsigned long lastLibraryRenderFinishedMs = 0;
+  std::string librarySkippedFolderName;
+  std::vector<std::string> libraryBadPaths;
 
   // Data loading
   void loadFiles();
@@ -49,17 +65,30 @@ class FileBrowserActivity final : public Activity {
   void loadLibraryDashboard();
   void loadLibraryShelf(uint8_t shelf);
   void startLibraryIndexing();
+  bool restoreLibraryDashboardSnapshot();
+  void saveLibraryDashboardSnapshot() const;
+  bool restoreLibraryDashboardIndex();
+  void saveLibraryDashboardIndex() const;
   bool processLibraryIndexJob();
   void addLibraryBookByPath(const std::string& path);
+  bool isBadLibraryPath(const std::string& path) const;
+  void markBadLibraryPath(const std::string& path);
+  void recordLibraryBreadcrumb(const char* phase, const std::string& path = "", const std::string& bookPath = "",
+                               int index = -1, int count = -1) const;
+  void clearLibraryBreadcrumb() const;
+  bool shouldEnterLibrarySafeMode() const;
   void sortLibraryDashboardBooks();
   void addLibraryBook(const std::string& path, const std::string& title, const std::string& author,
                       const std::string& coverPath, uint8_t progress, uint8_t state);
   bool isLibraryDashboard() const;
   bool isLibraryShelf() const;
+  bool isRawBrowseFilesMode() const;
+  bool usesBookshelfGrid() const;
   void clampSelector();
   size_t findEntry(const std::string& name) const;
   bool isBookshelfMode() const;
   int getBookshelfColumns() const;
+  int getBookshelfRows() const;
   int getBookshelfCardHeight() const;
   int getPageItems(const int contentHeight) const;
   uint16_t countFolderItems(const std::string& folderName) const;
@@ -83,8 +112,11 @@ class FileBrowserActivity final : public Activity {
   void confirmDeleteFile(const std::string& fullPath, const std::string& label);
 
  public:
-  explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/")
-      : Activity("FileBrowser", renderer, mappedInput), basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
+  explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
+                               bool rawFiles = false)
+      : Activity("FileBrowser", renderer, mappedInput),
+        rawFilesLaunch(rawFiles),
+        basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

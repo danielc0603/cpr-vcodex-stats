@@ -10,9 +10,11 @@
 namespace ReadingStatsAnalytics {
 namespace {
 constexpr uint64_t MIN_READING_DAY_BOOK_MS = 3ULL * 60ULL * 1000ULL;
+constexpr uint64_t MIN_TOTAL_ESTIMATE_READING_MS = 10ULL * 60ULL * 1000ULL;
 constexpr uint64_t MIN_MEDIUM_CONFIDENCE_MS = 20ULL * 60ULL * 1000ULL;
 constexpr uint64_t MIN_HIGH_CONFIDENCE_MS = 60ULL * 60ULL * 1000ULL;
 constexpr uint64_t ESTIMATE_ROUNDING_MS = 5ULL * 60ULL * 1000ULL;
+constexpr uint32_t MIN_TOTAL_ESTIMATE_PROGRESS = 5;
 constexpr uint32_t MIN_MEDIUM_CONFIDENCE_PROGRESS = 3;
 constexpr uint32_t MIN_HIGH_CONFIDENCE_PROGRESS = 10;
 constexpr uint32_t RECENT_SAMPLE_COUNT = 8;
@@ -101,6 +103,37 @@ TimeLeftEstimate buildProgressDeltaEstimate(const ReadingBookStats& book, const 
   estimate.remainingMs =
       roundUpEstimateMs((static_cast<uint64_t>(remainingPercent) * trackedMs + progressDelta - 1) / progressDelta);
   estimate.ready = estimate.remainingMs > 0;
+  return estimate;
+}
+
+TimeLeftEstimate buildTotalProgressFallbackEstimate(const ReadingBookStats& book, const uint8_t currentProgressPercent) {
+  TimeLeftEstimate estimate;
+  if (book.completed || currentProgressPercent >= 100) {
+    estimate.completed = true;
+    estimate.ready = true;
+    estimate.confidence = EstimateConfidence::HIGH_CONFIDENCE;
+    return estimate;
+  }
+
+  if (book.totalReadingMs < MIN_TOTAL_ESTIMATE_READING_MS ||
+      currentProgressPercent < MIN_TOTAL_ESTIMATE_PROGRESS) {
+    return estimate;
+  }
+
+  const uint64_t estimatedTotalMs =
+      (book.totalReadingMs * 100ULL + currentProgressPercent - 1) / currentProgressPercent;
+  if (estimatedTotalMs <= book.totalReadingMs) {
+    return estimate;
+  }
+
+  estimate.remainingMs = roundUpEstimateMs(estimatedTotalMs - book.totalReadingMs);
+  estimate.ready = estimate.remainingMs > 0;
+  estimate.trackedProgressDeltaPercent = currentProgressPercent;
+  estimate.trackedProgressMs = book.totalReadingMs;
+  estimate.progressPerHourTenths =
+      static_cast<uint32_t>((static_cast<uint64_t>(currentProgressPercent) * 36000ULL + book.totalReadingMs / 2) /
+                            book.totalReadingMs);
+  estimate.confidence = classifyConfidence(book.totalReadingMs, currentProgressPercent);
   return estimate;
 }
 
@@ -217,7 +250,16 @@ uint64_t getAverageReadingDayMs() {
 }
 
 TimeLeftEstimate buildBookTimeLeftEstimate(const ReadingBookStats& book) {
-  return buildProgressDeltaEstimate(book, book.lastProgressPercent);
+  TimeLeftEstimate estimate = buildProgressDeltaEstimate(book, book.lastProgressPercent);
+  if (estimate.ready || estimate.completed) {
+    return estimate;
+  }
+
+  TimeLeftEstimate fallback = buildTotalProgressFallbackEstimate(book, book.lastProgressPercent);
+  if (fallback.ready || fallback.completed) {
+    return fallback;
+  }
+  return estimate;
 }
 
 TimeLeftEstimate buildChapterTimeLeftEstimate(const ReadingBookStats& book) {

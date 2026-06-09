@@ -112,10 +112,11 @@ const std::vector<SettingInfo>& getDeviceDisplaySettings() {
       SettingInfo::Enum(StrId::STR_MENU_RECENT_BOOKS, &CrossPointSettings::recentBooksView,
                         {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_GRID}),
       SettingInfo::Enum(StrId::STR_LIBRARY_COLUMNS, &CrossPointSettings::bookshelfColumns,
-                        {StrId::STR_NUM_2, StrId::STR_NUM_3}),
+                        {StrId::STR_LAYOUT_2X2, StrId::STR_LAYOUT_2X3, StrId::STR_LAYOUT_3X3,
+                         StrId::STR_LAYOUT_3X4}),
       SettingInfo::Enum(StrId::STR_LIBRARY_SORT_BY, &CrossPointSettings::librarySort,
-                        {StrId::STR_TITLE, StrId::STR_AUTHOR, StrId::STR_RECENT_BOOKS, StrId::STR_PROGRESS,
-                         StrId::STR_FILE_TYPE, StrId::STR_FOLDER_PATH}),
+                        {StrId::STR_TITLE, StrId::STR_AUTHOR, StrId::STR_RECENT_BOOKS, StrId::STR_PROGRESS}),
+      SettingInfo::Toggle(StrId::STR_LIBRARY_STATUS, &CrossPointSettings::advancedStatusHeader),
       SettingInfo::Toggle(StrId::STR_SHOW_CURRENT_BOOK_CARD, &CrossPointSettings::showCurrentBookCard),
       SettingInfo::Toggle(StrId::STR_DARK_MODE, &CrossPointSettings::darkMode),
       SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix),
@@ -200,7 +201,6 @@ const std::vector<SettingInfo>& getDeviceSystemSettings() {
   static const std::vector<SettingInfo> settings = {
       SettingInfo::Enum(StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeout,
                         {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30}),
-      SettingInfo::Toggle(StrId::STR_STATUS, &CrossPointSettings::advancedStatusHeader),
       SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles),
       SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network),
       SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync),
@@ -233,6 +233,7 @@ const std::vector<SettingInfo>& getDeviceOnlySystemSettings() {
 
 const std::vector<SettingInfo>& getDeviceOnlyAppSettings() {
   static const std::vector<SettingInfo> settings = {
+      SettingInfo::Section(StrId::STR_APP_GROUP_TOOLS),
       SettingInfo::Action(StrId::STR_SYNC_DAY, SettingAction::SyncDay),
       SettingInfo::Action(StrId::STR_TIME_ZONE, SettingAction::TimeZone),
       SettingInfo::Toggle(StrId::STR_DISPLAY_DAY, &CrossPointSettings::displayDay),
@@ -244,6 +245,7 @@ const std::vector<SettingInfo>& getDeviceOnlyAppSettings() {
       SettingInfo::Enum(
           StrId::STR_DATE_FORMAT, &CrossPointSettings::dateFormat,
           {StrId::STR_DATE_FORMAT_DD_MM_YYYY, StrId::STR_DATE_FORMAT_MM_DD_YYYY, StrId::STR_DATE_FORMAT_YYYY_MM_DD}),
+      SettingInfo::Section(StrId::STR_APP_GROUP_READING),
       SettingInfo::Action(StrId::STR_READING_STATS, SettingAction::ReadingStats),
       SettingInfo::Enum(StrId::STR_DAILY_GOAL, &CrossPointSettings::dailyGoalTarget,
                         {StrId::STR_MIN_15, StrId::STR_MIN_30, StrId::STR_MIN_45, StrId::STR_MIN_60}),
@@ -258,6 +260,7 @@ const std::vector<SettingInfo>& getDeviceOnlyAppSettings() {
       SettingInfo::Toggle(StrId::STR_ACHIEVEMENT_POPUPS, &CrossPointSettings::achievementPopups),
       SettingInfo::Action(StrId::STR_RESET_ACHIEVEMENTS, SettingAction::ResetAchievements),
       SettingInfo::Action(StrId::STR_SYNC_WITH_PREV_STATS, SettingAction::SyncAchievementsFromStats),
+      SettingInfo::Section(StrId::STR_CAT_SYSTEM),
       SettingInfo::Action(StrId::STR_FAVORITES, SettingAction::Favorites),
       SettingInfo::Action(StrId::STR_SLEEP, SettingAction::SleepApp),
       SettingInfo::Action(StrId::STR_IF_FOUND_RETURN_ME, SettingAction::IfFound),

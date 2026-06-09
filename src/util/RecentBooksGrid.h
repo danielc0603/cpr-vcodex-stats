@@ -35,6 +35,12 @@ constexpr int kCoverCornerRadius = 2;
 constexpr int kSelectionPadding = 4;
 constexpr int kSelectionOutlineGap = 2;
 
+struct Layout {
+  int columns = kColumns;
+  int rows = 3;
+  int itemsPerPage = kItemsPerPage;
+};
+
 struct BookState {
   RecentBook book;
   std::string coverPath;
@@ -112,33 +118,104 @@ inline int moveHorizontal(const int currentIndex, const int totalItems, const bo
                    : ButtonNavigator::previousIndex(currentIndex, totalItems);
 }
 
+inline Layout layoutForCount(const int totalItems, const int maxItemsPerPage = kItemsPerPage) {
+  const int safeMax = std::max(1, maxItemsPerPage);
+  const int visible = std::min(std::max(0, totalItems), safeMax);
+  if (visible <= 1) return Layout{1, 1, 1};
+  if (visible == 2) return Layout{2, 1, 2};
+  if (visible == 3) return Layout{3, 1, 3};
+  if (visible == 4) return Layout{2, 2, 4};
+  if (visible <= 6) return Layout{3, 2, std::min(6, safeMax)};
+  return Layout{3, 3, std::min(kItemsPerPage, safeMax)};
+}
+
+inline int itemsPerPageForCount(const int totalItems, const int maxItemsPerPage = kItemsPerPage) {
+  return layoutForCount(totalItems, maxItemsPerPage).itemsPerPage;
+}
+
+inline int rowCountForLayout(const int pageCount, const int row) {
+  if (pageCount <= 0 || row < 0) return 0;
+  if (pageCount <= 3) return row == 0 ? pageCount : 0;
+  if (pageCount == 4) return row < 2 ? 2 : 0;
+  if (pageCount == 5) return row == 0 ? 3 : (row == 1 ? 2 : 0);
+  if (pageCount <= 6) return row < 2 ? 3 : 0;
+  if (row < 2) return 3;
+  return pageCount - 6;
+}
+
+inline int rowStartForLayout(const int pageCount, const int row) {
+  if (row <= 0) return 0;
+  int start = 0;
+  for (int currentRow = 0; currentRow < row; ++currentRow) {
+    start += rowCountForLayout(pageCount, currentRow);
+  }
+  return start;
+}
+
+inline int rowsForLayout(const int pageCount) {
+  int rows = 0;
+  while (rowCountForLayout(pageCount, rows) > 0) {
+    ++rows;
+  }
+  return std::max(1, rows);
+}
+
+inline int columnsForLayout(const int pageCount) {
+  if (pageCount <= 1) return 1;
+  if (pageCount == 2 || pageCount == 4) return 2;
+  return 3;
+}
+
+inline int localRowForLayout(const int pageCount, const int localIndex) {
+  int start = 0;
+  const int rows = rowsForLayout(pageCount);
+  for (int row = 0; row < rows; ++row) {
+    const int count = rowCountForLayout(pageCount, row);
+    if (localIndex < start + count) return row;
+    start += count;
+  }
+  return std::max(0, rows - 1);
+}
+
+inline int localColumnForLayout(const int pageCount, const int localIndex) {
+  const int row = localRowForLayout(pageCount, localIndex);
+  return localIndex - rowStartForLayout(pageCount, row);
+}
+
+inline int localIndexForRowColumn(const int pageCount, const int row, const int column) {
+  const int rows = rowsForLayout(pageCount);
+  const int safeRow = std::max(0, std::min(row, rows - 1));
+  const int count = rowCountForLayout(pageCount, safeRow);
+  if (count <= 0) return 0;
+  return rowStartForLayout(pageCount, safeRow) + std::max(0, std::min(column, count - 1));
+}
+
 inline int moveVertical(const int currentIndex, const int totalItems, const int itemsPerPage, const bool moveDown) {
   if (totalItems <= 0) return 0;
-  const int safeItemsPerPage = std::max(kColumns, itemsPerPage);
+  const int safeItemsPerPage = std::max(1, itemsPerPage);
   const int totalPages = (totalItems + safeItemsPerPage - 1) / safeItemsPerPage;
   const int currentPage = currentIndex / safeItemsPerPage;
   const int indexInPage = currentIndex % safeItemsPerPage;
-  const int currentRow = indexInPage / kColumns;
-  const int currentColumn = indexInPage % kColumns;
-  const int rowsPerPage = safeItemsPerPage / kColumns;
+  const int currentPageStart = currentPage * safeItemsPerPage;
+  const int currentPageCount = std::min(safeItemsPerPage, totalItems - currentPageStart);
+  const int currentRow = localRowForLayout(currentPageCount, indexInPage);
+  const int currentColumn = localColumnForLayout(currentPageCount, indexInPage);
+  const int rowsPerPage = rowsForLayout(currentPageCount);
 
   if (moveDown) {
     if (currentRow < rowsPerPage - 1) {
-      const int nextRowCandidate = currentIndex + kColumns;
-      if (nextRowCandidate < totalItems && nextRowCandidate / safeItemsPerPage == currentPage) {
-        return nextRowCandidate;
-      }
+      return currentPageStart + localIndexForRowColumn(currentPageCount, currentRow + 1, currentColumn);
     }
 
     const int nextPage = (currentPage + 1) % totalPages;
     const int nextPageStart = nextPage * safeItemsPerPage;
     const int nextPageCount = std::min(safeItemsPerPage, totalItems - nextPageStart);
     if (nextPageCount <= 0) return currentIndex;
-    return nextPageStart + std::min(currentColumn, nextPageCount - 1);
+    return nextPageStart + localIndexForRowColumn(nextPageCount, 0, currentColumn);
   }
 
   if (currentRow > 0) {
-    return currentIndex - kColumns;
+    return currentPageStart + localIndexForRowColumn(currentPageCount, currentRow - 1, currentColumn);
   }
 
   const int previousPage = (currentPage - 1 + totalPages) % totalPages;
@@ -146,11 +223,8 @@ inline int moveVertical(const int currentIndex, const int totalItems, const int 
   const int previousPageCount = std::min(safeItemsPerPage, totalItems - previousPageStart);
   if (previousPageCount <= 0) return currentIndex;
 
-  int previousPageCandidate = previousPageStart + ((previousPageCount - 1) / kColumns) * kColumns + currentColumn;
-  while (previousPageCandidate >= previousPageStart + previousPageCount) {
-    previousPageCandidate -= kColumns;
-  }
-  return std::max(previousPageStart, previousPageCandidate);
+  return previousPageStart +
+         localIndexForRowColumn(previousPageCount, rowsForLayout(previousPageCount) - 1, currentColumn);
 }
 
 inline void calculateCoverFillCrop(const Bitmap& bitmap, float& cropX, float& cropY) {
@@ -284,12 +358,14 @@ inline std::string loadSingleCover(GfxRenderer& renderer, RecentBook& book) {
 }
 
 inline void drawSelectedTitle(GfxRenderer& renderer, const std::vector<BookState>& books, const int selectedIndex,
-                              const int x, const int y, const int width) {
+                              const int x, const int y, const int width, const bool centered = false) {
   if (selectedIndex < 0 || selectedIndex >= static_cast<int>(books.size())) return;
   const BookState& selected = books[selectedIndex];
   const std::string title =
       renderer.truncatedText(UI_10_FONT_ID, titleFor(selected.book).c_str(), width, EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, x, y + 2, title.c_str(), true, EpdFontFamily::BOLD);
+  const int titleW = renderer.getTextWidth(UI_10_FONT_ID, title.c_str(), EpdFontFamily::BOLD);
+  const int titleX = centered ? x + std::max(0, (width - titleW) / 2) : x;
+  renderer.drawText(UI_10_FONT_ID, titleX, y + 2, title.c_str(), true, EpdFontFamily::BOLD);
 
   std::string detailLine = selected.book.author;
   if (!selected.progressLabel.empty()) {
@@ -298,7 +374,9 @@ inline void drawSelectedTitle(GfxRenderer& renderer, const std::vector<BookState
   }
   if (!detailLine.empty()) {
     const std::string safeDetail = renderer.truncatedText(SMALL_FONT_ID, detailLine.c_str(), width);
-    renderer.drawText(SMALL_FONT_ID, x, y + 22, safeDetail.c_str(), true);
+    const int detailW = renderer.getTextWidth(SMALL_FONT_ID, safeDetail.c_str());
+    const int detailX = centered ? x + std::max(0, (width - detailW) / 2) : x;
+    renderer.drawText(SMALL_FONT_ID, detailX, y + 22, safeDetail.c_str(), true);
   }
 }
 
@@ -327,6 +405,71 @@ inline void drawGrid(GfxRenderer& renderer, const std::vector<BookState>& books,
     const int row = index / kColumns;
     const Rect cover{startX + col * (kCoverWidth + kGridSpacing), gridTop + row * (kCoverHeight + kRowSpacing),
                      kCoverWidth, kCoverHeight};
+    bool drawn = false;
+    std::string thumbPath = books[bookIndex].coverPath;
+    if (thumbPath.empty() && !books[bookIndex].book.coverBmpPath.empty()) {
+      thumbPath = UITheme::getCoverThumbPath(books[bookIndex].book.coverBmpPath, kCoverWidth, kCoverHeight);
+    }
+    if (!thumbPath.empty() && Storage.exists(thumbPath.c_str())) {
+      FsFile file;
+      if (Storage.openFileForRead("RBG", thumbPath, file)) {
+        Bitmap bitmap(file);
+        if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
+          float cropX = 0.0f;
+          float cropY = 0.0f;
+          calculateCoverFillCrop(bitmap, cropX, cropY);
+          renderer.fillRoundedRect(cover.x, cover.y, cover.width, cover.height, kCoverCornerRadius, Color::White);
+          renderer.drawBitmap(bitmap, cover.x, cover.y, cover.width, cover.height, cropX, cropY);
+          renderer.maskRoundedRectOutsideCorners(cover.x, cover.y, cover.width, cover.height, kCoverCornerRadius,
+                                                 Color::White);
+          renderer.drawRoundedRect(cover.x, cover.y, cover.width, cover.height, 2, kCoverCornerRadius, true);
+          drawn = true;
+        }
+        file.close();
+      }
+    }
+    if (!drawn) drawPlaceholder(renderer, cover);
+    if (bookIndex == selectedIndex) {
+      const int selectionOuterInset = kSelectionPadding + kSelectionOutlineGap;
+      renderer.drawRoundedRect(cover.x - kSelectionPadding, cover.y - kSelectionPadding,
+                               cover.width + kSelectionPadding * 2, cover.height + kSelectionPadding * 2, 3,
+                               kCoverCornerRadius + kSelectionPadding, true);
+      renderer.drawRoundedRect(cover.x - selectionOuterInset, cover.y - selectionOuterInset,
+                               cover.width + selectionOuterInset * 2, cover.height + selectionOuterInset * 2, 1,
+                               kCoverCornerRadius + selectionOuterInset, true);
+    }
+  }
+}
+
+inline Rect dynamicCoverRect(const Rect& gridRect, const int pageCount, const int localIndex) {
+  const int columns = columnsForLayout(pageCount);
+  const int rows = rowsForLayout(pageCount);
+  const int maxCoverWidth = std::max(1, (gridRect.width - (columns - 1) * kGridSpacing) / columns);
+  const int maxCoverHeight = std::max(1, (gridRect.height - (rows - 1) * kRowSpacing) / rows);
+  int coverWidth = maxCoverWidth;
+  int coverHeight = (coverWidth * kCoverHeight) / kCoverWidth;
+  if (coverHeight > maxCoverHeight) {
+    coverHeight = maxCoverHeight;
+    coverWidth = (coverHeight * kCoverWidth) / kCoverHeight;
+  }
+  coverWidth = std::max(1, coverWidth);
+  coverHeight = std::max(1, coverHeight);
+
+  const int row = localRowForLayout(pageCount, localIndex);
+  const int column = localColumnForLayout(pageCount, localIndex);
+  const int rowCount = rowCountForLayout(pageCount, row);
+  const int rowWidth = rowCount * coverWidth + std::max(0, rowCount - 1) * kGridSpacing;
+  const int gridHeight = rows * coverHeight + std::max(0, rows - 1) * kRowSpacing;
+  const int x = gridRect.x + std::max(0, (gridRect.width - rowWidth) / 2) + column * (coverWidth + kGridSpacing);
+  const int y = gridRect.y + std::max(0, (gridRect.height - gridHeight) / 2) + row * (coverHeight + kRowSpacing);
+  return Rect{x, y, coverWidth, coverHeight};
+}
+
+inline void drawGridDynamic(GfxRenderer& renderer, const std::vector<BookState>& books, const int selectedIndex,
+                            const int pageStart, const int pageCount, const Rect& gridRect) {
+  for (int index = 0; index < pageCount; ++index) {
+    const int bookIndex = pageStart + index;
+    const Rect cover = dynamicCoverRect(gridRect, pageCount, index);
     bool drawn = false;
     std::string thumbPath = books[bookIndex].coverPath;
     if (thumbPath.empty() && !books[bookIndex].book.coverBmpPath.empty()) {

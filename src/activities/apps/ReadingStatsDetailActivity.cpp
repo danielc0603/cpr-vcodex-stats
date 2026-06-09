@@ -10,6 +10,7 @@
 #include <Xtc.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -218,6 +219,43 @@ std::string formatDateRange(const uint32_t startTimestamp, const uint32_t endTim
   const std::string start = TimeUtils::formatDate(startTimestamp);
   const std::string end = TimeUtils::formatDate(endTimestamp);
   return (start.empty() ? "?" : start) + " - " + (end.empty() ? "?" : end);
+}
+
+std::string trimCopy(const std::string& value) {
+  const auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch); });
+  const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
+  if (first >= last) {
+    return "";
+  }
+  return std::string(first, last);
+}
+
+bool startsWithChapterWord(const std::string& value) {
+  constexpr char chapter[] = "chapter";
+  if (value.size() < sizeof(chapter) - 1) {
+    return false;
+  }
+  for (size_t index = 0; index < sizeof(chapter) - 1; ++index) {
+    if (std::tolower(static_cast<unsigned char>(value[index])) != chapter[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string formatChapterRowLabel(const ReadingBookStats& book) {
+  const std::string chapter = trimCopy(book.chapterTitle);
+  const std::string prefix = std::string(tr(STR_CHAPTER));
+  if (chapter.empty()) {
+    return prefix + ": " + tr(STR_UNKNOWN);
+  }
+  if (startsWithChapterWord(chapter)) {
+    return chapter;
+  }
+  if (std::isdigit(static_cast<unsigned char>(chapter.front()))) {
+    return prefix + " " + chapter;
+  }
+  return prefix + ": " + chapter;
 }
 
 uint32_t getCompletionDateForDisplay(const ReadingBookStats& book) { return book.completedAt; }
@@ -735,7 +773,7 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
     cardsTop += SUMMARY_BANNER_HEIGHT + SUMMARY_BANNER_GAP;
   }
 
-  constexpr int metricRowCount = 15;
+  constexpr int metricRowCount = 10;
   const int contentBottom = cardsTop + metricRowCount * METRIC_ROW_HEIGHT +
                             metrics.verticalSpacing;
   maxScrollOffset = std::max(0, contentBottom - viewportBottom);
@@ -768,24 +806,13 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
     }
 
     const auto bookEstimate = ReadingStatsAnalytics::buildBookTimeLeftEstimate(*book);
-    const auto chapterEstimate = ReadingStatsAnalytics::buildChapterTimeLeftEstimate(*book);
-    const std::string chapterEstimateValue =
-        chapterEstimate.ready && chapterEstimate.confidence != ReadingStatsAnalytics::EstimateConfidence::LOW_CONFIDENCE
-            ? ReadingStatsAnalytics::formatTimeLeftEstimate(chapterEstimate)
-            : ReadingStatsAnalytics::formatTimeLeftEstimate(bookEstimate);
     const std::string progressGainValue =
         std::to_string(ReadingStatsAnalytics::getTrackedProgressGainPercent(*book)) + "%";
     const std::string paceTrendValue = ReadingStatsAnalytics::formatPaceTrend(*book);
     const std::string confidenceValue =
         bookEstimate.ready ? ReadingStatsAnalytics::formatEstimateConfidence(bookEstimate.confidence)
-                           : ReadingStatsAnalytics::formatEstimateReadinessExplanation(bookEstimate);
-    const std::string sessionProgressValue =
-        context.showSessionSummary && lastSessionSnapshot.valid && lastSessionSnapshot.path == bookPath
-            ? std::to_string(lastSessionSnapshot.endProgressPercent > lastSessionSnapshot.startProgressPercent
-                                 ? lastSessionSnapshot.endProgressPercent - lastSessionSnapshot.startProgressPercent
-                                 : 0) +
-                  "%"
-            : progressGainValue;
+                           : ReadingStatsAnalytics::formatEstimateConfidence(
+                                 ReadingStatsAnalytics::EstimateConfidence::LOW_CONFIDENCE);
 
     const int progressTop = currentY + 2;
     drawProgressBlock(renderer, Rect{detailsX, progressTop, detailsWidth, 34}, tr(STR_BOOK),
@@ -813,30 +840,23 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
     const Rect tableRect{metrics.contentSidePadding, drawCardsTop, pageWidth - metrics.contentSidePadding * 2,
                          metricRowCount * METRIC_ROW_HEIGHT};
     int rowIndex = 0;
-    const auto drawRow = [&](const char* label, const std::string& value) {
+    const auto drawRow = [&](const std::string& label, const std::string& value) {
       drawStatsTableRow(renderer,
                         Rect{tableRect.x, tableRect.y + rowIndex * METRIC_ROW_HEIGHT, tableRect.width,
                              METRIC_ROW_HEIGHT},
-                        label, value);
+                        label.c_str(), value);
       rowIndex++;
     };
-    drawRow(tr(STR_BOOK), std::to_string(std::min<int>(book->lastProgressPercent, 100)) + "%");
-    drawRow(tr(STR_CHAPTER), std::to_string(std::min<int>(book->chapterProgressPercent, 100)) + "%");
+    drawRow(formatChapterRowLabel(*book), std::to_string(std::min<int>(book->chapterProgressPercent, 100)) + "%");
     drawRow(tr(STR_LAST_SESSION), ReadingStatsAnalytics::formatDurationHm(book->lastSessionMs));
-    drawRow(tr(STR_TOTAL_TIME), ReadingStatsAnalytics::formatDurationHm(book->totalReadingMs));
-    drawRow(tr(STR_BOOK_TIME_LEFT), ReadingStatsAnalytics::formatTimeLeftEstimate(bookEstimate));
-    if (chapterEstimate.ready &&
-        chapterEstimate.confidence != ReadingStatsAnalytics::EstimateConfidence::LOW_CONFIDENCE) {
-      drawRow(tr(STR_CHAPTER_TIME_LEFT), chapterEstimateValue);
-    }
+    drawRow(tr(STR_TOTAL_SESSIONS),
+            std::to_string(book->sessions) + " (" + ReadingStatsAnalytics::formatDurationHm(book->totalReadingMs) + ")");
     drawRow(tr(STR_AVG_PACE),
             ReadingStatsAnalytics::formatProgressPace(ReadingStatsAnalytics::getAverageProgressPaceTenths(*book)));
     drawRow(tr(STR_RECENT_PACE),
             ReadingStatsAnalytics::formatProgressPace(ReadingStatsAnalytics::getRecentProgressPaceTenths(*book)));
-    drawRow(tr(STR_PROGRESS_GAIN), progressGainValue);
     drawRow(tr(STR_PACE_TREND), paceTrendValue);
-    drawRow(context.showSessionSummary ? tr(STR_SESSION_PROGRESS) : tr(STR_SESSIONS),
-            context.showSessionSummary ? sessionProgressValue : std::to_string(book->sessions));
+    drawRow(tr(STR_PROGRESS_GAIN), progressGainValue);
     drawRow(tr(STR_CONFIDENCE), confidenceValue);
     drawRow(tr(STR_ESTIMATE_STABILITY), ReadingStatsAnalytics::formatEstimateStability(*book));
     drawRow(tr(STR_START_END_DATE), formatDateRange(book->firstReadAt, getCompletionDateForDisplay(*book)));

@@ -86,6 +86,7 @@ void ReaderRecentBooksActivity::loop() {
   if (total <= 0) {
     return;
   }
+  const int pageItems = RecentBooksGrid::itemsPerPageForCount(total, RecentBooksGrid::kQuickItemsPerPage);
   auto moveSelection = [this, total](const int next) {
     selectedIndex = next;
     loadVisiblePageMetadata();
@@ -97,11 +98,11 @@ void ReaderRecentBooksActivity::loop() {
   buttonNavigator.onPress({MappedInputManager::Button::Left}, [this, total, moveSelection] {
     moveSelection(RecentBooksGrid::moveHorizontal(selectedIndex, total, false));
   });
-  buttonNavigator.onPress({MappedInputManager::Button::Down}, [this, total, moveSelection] {
-    moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, RecentBooksGrid::kQuickItemsPerPage, true));
+  buttonNavigator.onPress({MappedInputManager::Button::Down}, [this, total, pageItems, moveSelection] {
+    moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, pageItems, true));
   });
-  buttonNavigator.onPress({MappedInputManager::Button::Up}, [this, total, moveSelection] {
-    moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, RecentBooksGrid::kQuickItemsPerPage, false));
+  buttonNavigator.onPress({MappedInputManager::Button::Up}, [this, total, pageItems, moveSelection] {
+    moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, pageItems, false));
   });
   buttonNavigator.onContinuous({MappedInputManager::Button::Right}, [this, total, moveSelection] {
     moveSelection(RecentBooksGrid::moveHorizontal(selectedIndex, total, true));
@@ -109,18 +110,20 @@ void ReaderRecentBooksActivity::loop() {
   buttonNavigator.onContinuous({MappedInputManager::Button::Left}, [this, total, moveSelection] {
     moveSelection(RecentBooksGrid::moveHorizontal(selectedIndex, total, false));
   });
-  buttonNavigator.onContinuous({MappedInputManager::Button::Down}, [this, total, moveSelection] {
-    moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, RecentBooksGrid::kQuickItemsPerPage, true));
+  buttonNavigator.onContinuous({MappedInputManager::Button::Down}, [this, total, pageItems, moveSelection] {
+    moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, pageItems, true));
   });
-  buttonNavigator.onContinuous({MappedInputManager::Button::Up}, [this, total, moveSelection] {
-    moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, RecentBooksGrid::kQuickItemsPerPage, false));
+  buttonNavigator.onContinuous({MappedInputManager::Button::Up}, [this, total, pageItems, moveSelection] {
+    moveSelection(RecentBooksGrid::moveVertical(selectedIndex, total, pageItems, false));
   });
 }
 
 void ReaderRecentBooksActivity::loadVisiblePageMetadata() {
   if (books.empty()) return;
-  const int pageStart = (selectedIndex / RecentBooksGrid::kQuickItemsPerPage) * RecentBooksGrid::kQuickItemsPerPage;
-  RecentBooksGrid::ensurePageProgress(books, pageStart, RecentBooksGrid::kQuickItemsPerPage);
+  const int pageItems =
+      RecentBooksGrid::itemsPerPageForCount(static_cast<int>(books.size()), RecentBooksGrid::kQuickItemsPerPage);
+  const int pageStart = (selectedIndex / pageItems) * pageItems;
+  RecentBooksGrid::ensurePageProgress(books, pageStart, pageItems);
 }
 
 void ReaderRecentBooksActivity::render(RenderLock&&) {
@@ -135,24 +138,28 @@ void ReaderRecentBooksActivity::render(RenderLock&&) {
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, metrics.topPadding + metrics.headerHeight + 30,
                       tr(STR_NO_OPEN_BOOK));
   } else {
-    const int currentPage = selectedIndex / RecentBooksGrid::kQuickItemsPerPage;
-    const int pageStart = currentPage * RecentBooksGrid::kQuickItemsPerPage;
-    const int pageCount = std::min(RecentBooksGrid::kQuickItemsPerPage, static_cast<int>(books.size()) - pageStart);
-    const int gridWidth = RecentBooksGrid::kColumns * RecentBooksGrid::kCoverWidth +
-                          (RecentBooksGrid::kColumns - 1) * RecentBooksGrid::kGridSpacing;
-    const int startX = (pageWidth - gridWidth) / 2;
+    const int pageItems =
+        RecentBooksGrid::itemsPerPageForCount(static_cast<int>(books.size()), RecentBooksGrid::kQuickItemsPerPage);
+    const int currentPage = selectedIndex / pageItems;
+    const int pageStart = currentPage * pageItems;
+    const int pageCount = std::min(pageItems, static_cast<int>(books.size()) - pageStart);
     const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
     const int metadataTop = contentTop;
 
-    RecentBooksGrid::drawSelectedTitle(renderer, books, selectedIndex, startX, metadataTop, gridWidth);
+    RecentBooksGrid::drawSelectedTitle(renderer, books, selectedIndex, metrics.contentSidePadding, metadataTop,
+                                       pageWidth - metrics.contentSidePadding * 2, true);
 
     const int gridTop = contentTop + RecentBooksGrid::kTitleStripHeight + RecentBooksGrid::kTitleGridGap;
     const int dividerY = gridTop - RecentBooksGrid::kMetadataDividerGap;
     renderer.drawLine(metrics.contentSidePadding, dividerY, pageWidth - metrics.contentSidePadding, dividerY, true);
-    RecentBooksGrid::drawGrid(renderer, books, selectedIndex, pageStart, pageCount, startX, gridTop);
+    const int dotsReserve = static_cast<int>(books.size()) > pageItems ? 24 : 0;
+    const Rect gridRect{metrics.contentSidePadding, gridTop,
+                        pageWidth - metrics.contentSidePadding * 2,
+                        std::max(1, pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - dotsReserve -
+                                        gridTop)};
+    RecentBooksGrid::drawGridDynamic(renderer, books, selectedIndex, pageStart, pageCount, gridRect);
 
-    const int totalPages =
-        (static_cast<int>(books.size()) + RecentBooksGrid::kQuickItemsPerPage - 1) / RecentBooksGrid::kQuickItemsPerPage;
+    const int totalPages = (static_cast<int>(books.size()) + pageItems - 1) / pageItems;
     if (totalPages > 1) {
       const int dotY = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - 10;
       RecentBooksGrid::drawPageDots(renderer, pageWidth, dotY, totalPages, currentPage);
@@ -164,10 +171,11 @@ void ReaderRecentBooksActivity::render(RenderLock&&) {
   renderer.displayBuffer();
 
   if (!books.empty()) {
-    const int pageStart = (selectedIndex / RecentBooksGrid::kQuickItemsPerPage) * RecentBooksGrid::kQuickItemsPerPage;
+    const int pageItems =
+        RecentBooksGrid::itemsPerPageForCount(static_cast<int>(books.size()), RecentBooksGrid::kQuickItemsPerPage);
+    const int pageStart = (selectedIndex / pageItems) * pageItems;
     if (pageStart != loadedPageStart) {
-      const bool generated =
-          RecentBooksGrid::loadPageCovers(renderer, books, pageStart, RecentBooksGrid::kQuickItemsPerPage);
+      const bool generated = RecentBooksGrid::loadPageCovers(renderer, books, pageStart, pageItems);
       loadedPageStart = pageStart;
       if (generated) {
         requestUpdate();

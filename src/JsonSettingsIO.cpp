@@ -352,6 +352,9 @@ bool loadSettingsDirect(CrossPointSettings& s, const JsonDocument& doc, bool* ne
   loadEnum("fileBrowserView", s.fileBrowserView, CrossPointSettings::FILE_BROWSER_VIEW_COUNT);
   loadEnum("bookshelfColumns", s.bookshelfColumns, CrossPointSettings::BOOKSHELF_COLUMNS_COUNT);
   loadEnum("librarySort", s.librarySort, CrossPointSettings::LIBRARY_SORT_COUNT);
+  if (s.librarySort >= CrossPointSettings::LIBRARY_SORT_COUNT) {
+    s.librarySort = CrossPointSettings::LIBRARY_SORT_TITLE;
+  }
   loadToggle("advancedStatusHeader", s.advancedStatusHeader);
 
   loadString("opdsServerUrl", s.opdsServerUrl, sizeof(s.opdsServerUrl));
