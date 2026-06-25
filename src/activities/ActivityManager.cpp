@@ -3,20 +3,17 @@
 #include <HalPowerManager.h>
 
 #include "CrossPointSettings.h"
-#include "OpdsServerStore.h"
 #include "apps/AppsActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
-#include "browser/OpdsBookBrowserActivity.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
+#include "home/LibraryActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
-#include "reader/KOReaderSyncActivity.h"
 #include "reader/ReaderActivity.h"
 #include "../CrossPointState.h"
-#include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/FullScreenMessageActivity.h"
 
@@ -181,40 +178,45 @@ void ActivityManager::goToSettings() { replaceActivity(std::make_unique<Settings
 
 void ActivityManager::goToApps() { replaceActivity(std::make_unique<AppsActivity>(renderer, mappedInput)); }
 
+void ActivityManager::goToLibrary() {
+  replaceActivity(std::make_unique<LibraryActivity>(renderer, mappedInput));
+}
+
+void ActivityManager::goToLibraryReindex() {
+  replaceActivity(std::make_unique<LibraryActivity>(renderer, mappedInput, LibraryActivity::LaunchMode::Reindex));
+}
+
+void ActivityManager::goToLibraryCollection(const uint8_t collection) {
+  LibraryActivity::LaunchMode mode = LibraryActivity::LaunchMode::Normal;
+  switch (collection) {
+    case 0:
+      mode = LibraryActivity::LaunchMode::Series;
+      break;
+    case 1:
+      mode = LibraryActivity::LaunchMode::Authors;
+      break;
+    case 2:
+      mode = LibraryActivity::LaunchMode::ToRead;
+      break;
+    case 3:
+      mode = LibraryActivity::LaunchMode::Finished;
+      break;
+    default:
+      break;
+  }
+  replaceActivity(std::make_unique<LibraryActivity>(renderer, mappedInput, mode));
+}
+
 void ActivityManager::goToFileBrowser(std::string path) {
-  const bool rawFiles = !path.empty() || SETTINGS.libraryDefaultView == CrossPointSettings::LIBRARY_VIEW_FILES;
-  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, rawFiles ? std::move(path) : "/",
-                                                        rawFiles));
+  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, path.empty() ? "/" : std::move(path)));
 }
 
 void ActivityManager::goToRecentBooks() {
   replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput));
 }
 
-void ActivityManager::goToBrowser() {
-  const auto& servers = OPDS_STORE.getServers();
-  // Skip the server picker when there's only one server configured
-  if (servers.size() == 1) {
-    replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput, servers[0]));
-  } else {
-    replaceActivity(std::make_unique<OpdsServerListActivity>(renderer, mappedInput, true));
-  }
-}
-
 void ActivityManager::goToReader(std::string path) {
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path)));
-}
-
-void ActivityManager::goToKOReaderSync() {
-  const auto& sync = APP_STATE.koReaderSyncSession;
-  if (!sync.active || sync.epubPath.empty()) {
-    LOG_ERR("ACT", "Cannot launch KOReader sync without an active EPUB handoff");
-    goHome();
-    return;
-  }
-  replaceActivity(std::make_unique<KOReaderSyncActivity>(renderer, mappedInput, sync.epubPath, sync.spineIndex,
-                                                         sync.page, sync.totalPagesInSpine, sync.paragraphIndex,
-                                                         sync.hasParagraphIndex, sync.xhtmlSeekHint, sync.intent));
 }
 
 void ActivityManager::goToEpubBookmark(std::string path, const int spineIndex, const uint32_t page) {

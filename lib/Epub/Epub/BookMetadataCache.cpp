@@ -9,7 +9,9 @@
 #include "FsHelpers.h"
 
 namespace {
-constexpr uint8_t BOOK_CACHE_VERSION = 5;
+constexpr uint8_t BOOK_CACHE_VERSION = 7;
+constexpr uint8_t BOOK_CACHE_LEGACY_VERSION = 5;
+constexpr uint8_t BOOK_CACHE_FLAG_COMPLETE = 0x01;
 constexpr char bookBinFile[] = "/book.bin";
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
@@ -19,6 +21,7 @@ constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
 
 bool BookMetadataCache::beginWrite() {
   buildMode = true;
+  complete = false;
   spineCount = 0;
   tocCount = 0;
   LOG_DBG("BMC", "Entering write mode");
@@ -118,8 +121,8 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     return false;
   }
 
-  constexpr uint32_t headerASize =
-      sizeof(BOOK_CACHE_VERSION) + /* LUT Offset */ sizeof(uint32_t) + sizeof(spineCount) + sizeof(tocCount);
+  constexpr uint32_t headerASize = sizeof(BOOK_CACHE_VERSION) + sizeof(uint8_t) + /* LUT Offset */ sizeof(uint32_t) +
+                                   sizeof(spineCount) + sizeof(tocCount);
   const uint32_t metadataSize = metadata.title.size() + metadata.author.size() + metadata.language.size() +
                                 metadata.coverItemHref.size() + metadata.textReferenceHref.size() +
                                 sizeof(uint32_t) * 5;
@@ -128,6 +131,7 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
 
   // Header A
   serialization::writePod(bookFile, BOOK_CACHE_VERSION);
+  serialization::writePod(bookFile, BOOK_CACHE_FLAG_COMPLETE);
   serialization::writePod(bookFile, lutOffset);
   serialization::writePod(bookFile, spineCount);
   serialization::writePod(bookFile, tocCount);
@@ -280,6 +284,57 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
   return true;
 }
 
+bool BookMetadataCache::buildMetadataOnlyBookBin(const BookMetadata& metadata) {
+  if (!Storage.openFileForWrite("BMC", cachePath + bookBinFile, bookFile)) {
+    return false;
+  }
+  if (!Storage.openFileForRead("BMC", cachePath + tmpSpineBinFile, spineFile)) {
+    bookFile.close();
+    return false;
+  }
+
+  tocCount = 0;
+  constexpr uint32_t headerASize = sizeof(BOOK_CACHE_VERSION) + sizeof(uint8_t) + /* LUT Offset */ sizeof(uint32_t) +
+                                   sizeof(spineCount) + sizeof(tocCount);
+  const uint32_t metadataSize = metadata.title.size() + metadata.author.size() + metadata.language.size() +
+                                metadata.coverItemHref.size() + metadata.textReferenceHref.size() +
+                                sizeof(uint32_t) * 5;
+  const uint32_t lutSize = sizeof(uint32_t) * spineCount;
+  const uint32_t lutOffset = headerASize + metadataSize;
+
+  serialization::writePod(bookFile, BOOK_CACHE_VERSION);
+  serialization::writePod(bookFile, static_cast<uint8_t>(0));
+  serialization::writePod(bookFile, lutOffset);
+  serialization::writePod(bookFile, spineCount);
+  serialization::writePod(bookFile, tocCount);
+  serialization::writeString(bookFile, metadata.title);
+  serialization::writeString(bookFile, metadata.author);
+  serialization::writeString(bookFile, metadata.language);
+  serialization::writeString(bookFile, metadata.coverItemHref);
+  serialization::writeString(bookFile, metadata.textReferenceHref);
+
+  spineFile.seek(0);
+  for (int i = 0; i < spineCount; i++) {
+    const uint32_t pos = spineFile.position();
+    auto spineEntry = readSpineEntry(spineFile);
+    serialization::writePod(bookFile, pos + lutOffset + lutSize);
+  }
+
+  spineFile.seek(0);
+  for (int i = 0; i < spineCount; i++) {
+    auto spineEntry = readSpineEntry(spineFile);
+    spineEntry.cumulativeSize = 0;
+    spineEntry.tocIndex = -1;
+    writeSpineEntry(bookFile, spineEntry);
+  }
+
+  bookFile.close();
+  spineFile.close();
+  complete = false;
+  LOG_DBG("BMC", "Successfully built metadata-only book.bin");
+  return true;
+}
+
 bool BookMetadataCache::cleanupTmpFiles() const {
   const auto spineBinFile = cachePath + tmpSpineBinFile;
   if (Storage.exists(spineBinFile.c_str())) {
@@ -378,11 +433,19 @@ bool BookMetadataCache::load() {
 
   uint8_t version;
   serialization::readPod(bookFile, version);
-  if (version != BOOK_CACHE_VERSION) {
+  if (version != BOOK_CACHE_VERSION && version != BOOK_CACHE_LEGACY_VERSION) {
     LOG_DBG("BMC", "Cache version mismatch: expected %d, got %d", BOOK_CACHE_VERSION, version);
     // Explicit close() required: member variable persists beyond function scope
     bookFile.close();
     return false;
+  }
+
+  if (version == BOOK_CACHE_VERSION) {
+    uint8_t flags = 0;
+    serialization::readPod(bookFile, flags);
+    complete = (flags & BOOK_CACHE_FLAG_COMPLETE) != 0;
+  } else {
+    complete = true;
   }
 
   serialization::readPod(bookFile, lutOffset);

@@ -12,7 +12,11 @@
 HalStorage HalStorage::instance;
 
 HalStorage::HalStorage() {
-  storageMutex = xSemaphoreCreateMutex();
+  // Recursive so the same task can re-enter StorageLock without self-deadlock.
+  // openFileForRead/Write take the lock and then assign to a HalFile&
+  // out-param; if that out-param already held an Impl, its destructor takes
+  // the lock again to close the prior FsFile under serialization.
+  storageMutex = xSemaphoreCreateRecursiveMutex();
   assert(storageMutex != nullptr);
 }
 
@@ -26,8 +30,8 @@ bool HalStorage::ready() const { return SDCard.ready(); }
 
 class HalStorage::StorageLock {
  public:
-  StorageLock() { xSemaphoreTake(HalStorage::getInstance().storageMutex, portMAX_DELAY); }
-  ~StorageLock() { xSemaphoreGive(HalStorage::getInstance().storageMutex); }
+  StorageLock() { xSemaphoreTakeRecursive(HalStorage::getInstance().storageMutex, portMAX_DELAY); }
+  ~StorageLock() { xSemaphoreGiveRecursive(HalStorage::getInstance().storageMutex); }
 };
 
 #define HAL_STORAGE_WRAPPED_CALL(method, ...) \
@@ -57,6 +61,10 @@ bool HalStorage::ensureDirectoryExists(const char* path) { HAL_STORAGE_WRAPPED_C
 class HalFile::Impl {
  public:
   Impl(FsFile&& fsFile) : file(std::move(fsFile)) {}
+  ~Impl() {
+    HalStorage::StorageLock lock;
+    file.close();
+  }
   FsFile file;
 };
 

@@ -17,12 +17,11 @@
 #include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
-#include "KOReaderSettingsActivity.h"
 #include "FontSelectionActivity.h"
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
-#include "OpdsServerListActivity.h"
 #include "OtaUpdateActivity.h"
+#include "SdFirmwareUpdateActivity.h"
 #include "ReadingStatsStore.h"
 #include "SettingsList.h"
 #include "ShortcutLocationActivity.h"
@@ -37,9 +36,13 @@
 #include "activities/apps/ReadingHeatmapActivity.h"
 #include "activities/apps/ReadingProfileActivity.h"
 #include "activities/apps/ReadingStatsActivity.h"
+#include "activities/apps/ReadingTimeChartActivity.h"
 #include "activities/apps/SleepAppActivity.h"
 #include "activities/apps/SyncDayActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/home/LibraryActivity.h"
+#include "activities/util/CompactHudRenderer.h"
+#include "activities/ActivityManager.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -64,14 +67,12 @@ constexpr StrId MENU_ACTION_LABELS[] = {StrId::STR_IGNORE,
                                         StrId::STR_BIONIC_READING,
                                         StrId::STR_FONT_FAMILY,
                                         StrId::STR_BOOKMARKS,
-                                        StrId::STR_SYNC_PROGRESS,
                                         StrId::STR_MARK_FINISHED,
                                         StrId::STR_READING_STATS};
 constexpr uint8_t MENU_ACTION_VALUES[] = {CrossPointSettings::LONG_MENU_OFF,
                                           CrossPointSettings::LONG_MENU_TOGGLE_BIONIC,
                                           CrossPointSettings::LONG_MENU_CHANGE_FONT,
                                           CrossPointSettings::LONG_MENU_TOGGLE_BOOKMARK,
-                                          CrossPointSettings::LONG_MENU_SYNC_PROGRESS,
                                           CrossPointSettings::LONG_MENU_MARK_FINISHED,
                                           CrossPointSettings::LONG_MENU_READING_STATS};
 constexpr StrId FRONT_LONG_PRESS_LABELS[] = {StrId::STR_STATE_OFF, StrId::STR_LONG_PRESS_SKIP,
@@ -82,6 +83,41 @@ constexpr StrId ORIENTATION_LABELS[] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAP
                                         StrId::STR_LANDSCAPE_CCW, StrId::STR_CYCLE_ORIENTATIONS};
 int savedSettingsCategoryIndex = 0;
 int savedSettingsSettingIndex = 0;
+
+enum NestedSettingsPageId {
+  PAGE_READER_FONT,
+  PAGE_READER_LAYOUT,
+  PAGE_READER_MARGINS,
+  PAGE_READER_HEADER_FOOTER,
+  PAGE_READER_PROGRESS,
+  PAGE_CONTROLS_POWER,
+  PAGE_CONTROLS_FRONT,
+  PAGE_CONTROLS_SIDE,
+  PAGE_APPS_TOOLS,
+  PAGE_APPS_READING,
+  PAGE_APPS_SHORTCUTS,
+  PAGE_APPS_READING_STATS,
+  PAGE_APPS_NETWORK,
+  PAGE_SYSTEM_DEVICE,
+  PAGE_SYSTEM_FIRMWARE,
+  PAGE_SYSTEM_READING_STATS,
+  PAGE_SYSTEM_SLEEP_POWER,
+  PAGE_COUNT
+};
+
+enum LibraryControlsRow {
+  LIBCTL_RECENT_VIEW = 0,
+  LIBCTL_SORT_BY,
+  LIBCTL_SORT_DIRECTION,
+  LIBCTL_COLLECTIONS,
+  LIBCTL_TO_READ_SHELF,
+  LIBCTL_REMOVE_READ_RECENTS,
+  LIBCTL_DELETE_CACHE,
+  LIBCTL_REINDEX,
+  LIBCTL_COUNT
+};
+
+uint8_t settingsLibraryCollection = 0;
 
 template <size_t N>
 std::vector<StrId> valuesFromArray(const StrId (&values)[N]) {
@@ -193,26 +229,11 @@ const std::vector<SettingInfo>& getDeviceSystemSettings() {
                         {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30}),
       SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
                         {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}),
-      SettingInfo::Enum(StrId::STR_MENU_RECENT_BOOKS, &CrossPointSettings::recentBooksView,
-                        {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_GRID}),
-      SettingInfo::Enum(StrId::STR_LIBRARY_VIEW, &CrossPointSettings::libraryDefaultView,
-                        {StrId::STR_COVER_LIBRARY, StrId::STR_FILE_LIST}),
-      SettingInfo::Enum(StrId::STR_LIBRARY_COLUMNS, &CrossPointSettings::bookshelfColumns,
-                        {StrId::STR_LAYOUT_2X2, StrId::STR_LAYOUT_3X3, StrId::STR_LAYOUT_3X4})
-          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
-      SettingInfo::Enum(StrId::STR_LIBRARY_SORT_BY, &CrossPointSettings::librarySort,
-                        {StrId::STR_TITLE, StrId::STR_AUTHOR, StrId::STR_RECENT_BOOKS, StrId::STR_PROGRESS})
-          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
-      SettingInfo::Toggle(StrId::STR_LIBRARY_STATUS, &CrossPointSettings::advancedStatusHeader)
-          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
       SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles),
       SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network),
-      SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync),
-      SettingInfo::Enum(StrId::STR_OPDS_FILENAME_FORMAT, &CrossPointSettings::opdsFilenameFormat,
-                        {StrId::STR_AUTHOR_TITLE, StrId::STR_TITLE_AUTHOR}),
-      SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser),
       SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache),
       SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates),
+      SettingInfo::Action(StrId::STR_SD_CARD, SettingAction::InstallUpdateFromSd),
       SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language),
   };
   return settings;
@@ -226,10 +247,9 @@ const std::vector<SettingInfo>& getDeviceOnlyControlSettings() {
 const std::vector<SettingInfo>& getDeviceOnlySystemSettings() {
   static const std::vector<SettingInfo> settings = {
       SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network),
-      SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync),
-      SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser),
       SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache),
       SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates),
+      SettingInfo::Action(StrId::STR_SD_CARD, SettingAction::InstallUpdateFromSd),
       SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language),
   };
   return settings;
@@ -253,10 +273,14 @@ const std::vector<SettingInfo>& getDeviceOnlyAppSettings() {
       SettingInfo::Action(StrId::STR_READING_STATS, SettingAction::ReadingStats),
       SettingInfo::Enum(StrId::STR_DAILY_GOAL, &CrossPointSettings::dailyGoalTarget,
                         {StrId::STR_MIN_15, StrId::STR_MIN_30, StrId::STR_MIN_45, StrId::STR_MIN_60}),
+      SettingInfo::Enum(StrId::STR_IDLE_TIME_THRESHOLD, &CrossPointSettings::idleTimeThreshold,
+                        {StrId::STR_MIN_3, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15,
+                         StrId::STR_MIN_30}),
       SettingInfo::Toggle(StrId::STR_SHOW_AFTER_READING, &CrossPointSettings::showStatsAfterReading),
       SettingInfo::Action(StrId::STR_RESET_READING_STATS, SettingAction::ResetReadingStats),
       SettingInfo::Action(StrId::STR_EXPORT_READING_STATS, SettingAction::ExportReadingStats),
       SettingInfo::Action(StrId::STR_IMPORT_READING_STATS, SettingAction::ImportReadingStats),
+      SettingInfo::Action(StrId::STR_READING_TIME_CHART, SettingAction::ReadingTimeChart),
       SettingInfo::Action(StrId::STR_READING_HEATMAP, SettingAction::ReadingHeatmap),
       SettingInfo::Action(StrId::STR_READING_PROFILE, SettingAction::ReadingProfile),
       SettingInfo::Action(StrId::STR_ACHIEVEMENTS, SettingAction::Achievements),
@@ -272,6 +296,7 @@ const std::vector<SettingInfo>& getDeviceOnlyAppSettings() {
       SettingInfo::Action(StrId::STR_SHORTCUT_VISIBILITY, SettingAction::ShortcutVisibility),
       SettingInfo::Action(StrId::STR_ORDER_HOME_SHORTCUTS, SettingAction::OrderHomeShortcuts),
       SettingInfo::Action(StrId::STR_ORDER_APPS_SHORTCUTS, SettingAction::OrderAppsShortcuts),
+      SettingInfo::Action(StrId::STR_SHOW_LIBRARY, SettingAction::LibraryControls),
   };
   return settings;
 }
@@ -283,7 +308,10 @@ const std::vector<SettingInfo>& getDeviceOnlyReaderSettings() {
   return settings;
 }
 
-std::string getReadingStatsExportPath() { return "/exports/stats_exported"; }
+constexpr const char* READING_STATS_BACKUP_DIR = "/.cpr-vcodex-stats-backup";
+constexpr const char* LEGACY_READING_STATS_EXPORT_PATH = "/exports/stats_exported";
+
+std::string getReadingStatsExportPath() { return std::string(READING_STATS_BACKUP_DIR) + "/reading_stats_backup.json"; }
 
 std::string fileNameFromPath(const std::string& path) {
   const size_t pos = path.find_last_of('/');
@@ -314,7 +342,13 @@ std::string utf8LimitChars(std::string text, const size_t maxChars) {
 
 std::string getLatestReadingStatsImportPath() {
   const std::string path = getReadingStatsExportPath();
-  return Storage.exists(path.c_str()) ? path : std::string();
+  if (Storage.exists(path.c_str())) {
+    return path;
+  }
+  if (Storage.exists(LEGACY_READING_STATS_EXPORT_PATH)) {
+    return LEGACY_READING_STATS_EXPORT_PATH;
+  }
+  return "";
 }
 
 std::string getReadingStatsExportFileName() { return fileNameFromPath(getReadingStatsExportPath()); }
@@ -436,6 +470,8 @@ std::string getSettingValueText(const SettingInfo& setting) {
         return getShortcutOrderSettingValueText(ShortcutOrderGroup::Home);
       case SettingAction::OrderAppsShortcuts:
         return getShortcutOrderSettingValueText(ShortcutOrderGroup::Apps);
+      case SettingAction::LibraryControls:
+        return tr(STR_OPEN);
       default:
         break;
     }
@@ -472,9 +508,6 @@ bool shouldShowDeviceSetting(const SettingInfo& setting) {
   }
   if (setting.visibility == SettingInfo::Visibility::SideOrientationTarget) {
     return SETTINGS.sideButtonLongPress == CrossPointSettings::SIDE_LONG_ORIENTATION_CHANGE;
-  }
-  if (setting.visibility == SettingInfo::Visibility::LibraryCoverView) {
-    return SETTINGS.libraryDefaultView == CrossPointSettings::LIBRARY_VIEW_COVER;
   }
   if (setting.nameId == StrId::STR_FILE_BROWSER_VIEW) {
     return true;
@@ -541,6 +574,95 @@ void SettingsActivity::buildSettingsLists() {
   for (const auto& setting : deviceApps) {
     appSettings.push_back(&setting);
   }
+
+  groupSettings.clear();
+  nestedPages.clear();
+  groupSettings.reserve(PAGE_COUNT);
+  nestedPages.resize(PAGE_COUNT);
+
+  auto addGroup = [this](std::vector<SettingRef>& root, const StrId label, const int pageId) {
+    groupSettings.push_back(SettingInfo::Group(label, pageId));
+    root.push_back(&groupSettings.back());
+  };
+  auto moveMatching = [](std::vector<SettingRef>& source, std::vector<SettingRef>& target, auto matcher) {
+    std::vector<SettingRef> kept;
+    kept.reserve(source.size());
+    for (auto* setting : source) {
+      if (matcher(*setting)) {
+        if (setting->type != SettingType::SECTION) {
+          target.push_back(setting);
+        }
+      } else {
+        kept.push_back(setting);
+      }
+    }
+    source = std::move(kept);
+  };
+
+  std::vector<SettingRef> readerRoot;
+  addGroup(readerRoot, StrId::STR_FONT_FAMILY, PAGE_READER_FONT);
+  moveMatching(readerSettings, nestedPages[PAGE_READER_FONT], [](const SettingInfo& s) {
+    return s.nameId == StrId::STR_FONT_FAMILY || s.nameId == StrId::STR_FONT_SIZE ||
+           s.nameId == StrId::STR_TEXT_AA || s.nameId == StrId::STR_TEXT_DARKNESS;
+  });
+  readerRoot.insert(readerRoot.end(), readerSettings.begin(), readerSettings.end());
+  readerSettings = std::move(readerRoot);
+
+  std::vector<SettingRef> controlsRoot;
+  addGroup(controlsRoot, StrId::STR_POWER_BUTTON, PAGE_CONTROLS_POWER);
+  addGroup(controlsRoot, StrId::STR_FRONT_BUTTONS, PAGE_CONTROLS_FRONT);
+  addGroup(controlsRoot, StrId::STR_SIDE_BUTTONS, PAGE_CONTROLS_SIDE);
+  moveMatching(controlsSettings, nestedPages[PAGE_CONTROLS_POWER], [](const SettingInfo& s) {
+    return s.nameId == StrId::STR_POWER_BUTTON || s.nameId == StrId::STR_SHORT_PWR_BTN ||
+           s.nameId == StrId::STR_LONG_PRESS_ACTION;
+  });
+  moveMatching(controlsSettings, nestedPages[PAGE_CONTROLS_FRONT], [](const SettingInfo& s) {
+    return s.nameId == StrId::STR_FRONT_BUTTONS || s.action == SettingAction::RemapFrontButtons ||
+           s.action == SettingAction::RemapReaderFrontButtons || s.nameId == StrId::STR_FRONT_BUTTON_HOLD_READER ||
+           s.nameId == StrId::STR_HOLD_MENU_SHORTCUT || s.nameId == StrId::STR_FRONT_BTN_ORIENTATION_AWARE;
+  });
+  nestedPages[PAGE_CONTROLS_SIDE] = controlsSettings;
+  controlsSettings = std::move(controlsRoot);
+
+  std::vector<SettingRef> appsRoot;
+  addGroup(appsRoot, StrId::STR_DEVICE_TIME, PAGE_APPS_TOOLS);
+  addGroup(appsRoot, StrId::STR_APP_GROUP_READING, PAGE_APPS_READING);
+  addGroup(appsRoot, StrId::STR_SHORTCUTS_SECTION, PAGE_APPS_SHORTCUTS);
+  moveMatching(appSettings, nestedPages[PAGE_APPS_TOOLS], [](const SettingInfo& s) {
+    return s.action == SettingAction::TimeZone || s.nameId == StrId::STR_DISPLAY_DAY ||
+           s.nameId == StrId::STR_DATE_FORMAT || s.action == SettingAction::SyncDay ||
+           s.nameId == StrId::STR_CHOOSE_WIFI || s.nameId == StrId::STR_SYNC_DAY_REMINDER_EVERY;
+  });
+  moveMatching(appSettings, nestedPages[PAGE_APPS_READING], [](const SettingInfo& s) {
+    return s.action == SettingAction::ReadingStats || s.action == SettingAction::ResetReadingStats ||
+           s.action == SettingAction::ExportReadingStats || s.action == SettingAction::ImportReadingStats ||
+           s.action == SettingAction::ReadingTimeChart || s.action == SettingAction::ReadingHeatmap ||
+           s.action == SettingAction::ReadingProfile || s.action == SettingAction::Achievements ||
+           s.action == SettingAction::ResetAchievements || s.action == SettingAction::SyncAchievementsFromStats ||
+           s.nameId == StrId::STR_DAILY_GOAL || s.nameId == StrId::STR_IDLE_TIME_THRESHOLD ||
+           s.nameId == StrId::STR_SHOW_AFTER_READING || s.nameId == StrId::STR_ENABLE_ACHIEVEMENTS ||
+           s.nameId == StrId::STR_ACHIEVEMENT_POPUPS;
+  });
+  moveMatching(appSettings, nestedPages[PAGE_APPS_SHORTCUTS], [](const SettingInfo& s) {
+    return s.action == SettingAction::Favorites || s.action == SettingAction::SleepApp ||
+           s.action == SettingAction::IfFound || s.action == SettingAction::ShortcutLocation ||
+           s.action == SettingAction::ShortcutVisibility || s.action == SettingAction::OrderHomeShortcuts ||
+           s.action == SettingAction::OrderAppsShortcuts || s.action == SettingAction::LibraryControls;
+  });
+  for (auto* setting : appSettings) {
+    if (setting->type != SettingType::SECTION) {
+      appsRoot.push_back(setting);
+    }
+  }
+  appSettings = std::move(appsRoot);
+
+  std::vector<SettingRef> systemRoot;
+  addGroup(systemRoot, StrId::STR_UPDATE, PAGE_SYSTEM_FIRMWARE);
+  moveMatching(systemSettings, nestedPages[PAGE_SYSTEM_FIRMWARE], [](const SettingInfo& s) {
+    return s.action == SettingAction::CheckForUpdates || s.action == SettingAction::InstallUpdateFromSd;
+  });
+  systemRoot.insert(systemRoot.end(), systemSettings.begin(), systemSettings.end());
+  systemSettings = std::move(systemRoot);
   settingsListsBuilt = true;
 }
 
@@ -554,6 +676,8 @@ void SettingsActivity::onExit() {
 
 void SettingsActivity::enterCategory(const int categoryIndex) {
   selectedCategoryIndex = categoryIndex;
+  pageStack.clear();
+  selectionStack.clear();
   switch (selectedCategoryIndex) {
     case 0:
       currentSettings = &displaySettings;
@@ -572,6 +696,55 @@ void SettingsActivity::enterCategory(const int categoryIndex) {
       break;
   }
   settingsCount = static_cast<int>(currentSettings->size());
+}
+
+void SettingsActivity::enterNestedPage(const int pageId) {
+  if (pageId < 0 || pageId >= static_cast<int>(nestedPages.size())) {
+    return;
+  }
+  selectionStack.push_back(selectedSettingIndex);
+  pageStack.push_back(pageId);
+  currentSettings = &nestedPages[pageId];
+  settingsCount = static_cast<int>(currentSettings->size());
+  selectedSettingIndex = firstSelectableSettingIndex();
+}
+
+bool SettingsActivity::leaveNestedPage() {
+  if (pageStack.empty()) {
+    return false;
+  }
+  pageStack.pop_back();
+  const int restoreSelection = selectionStack.empty() ? 0 : selectionStack.back();
+  if (!selectionStack.empty()) {
+    selectionStack.pop_back();
+  }
+  if (pageStack.empty()) {
+    switch (selectedCategoryIndex) {
+      case 0:
+        currentSettings = &displaySettings;
+        break;
+      case 1:
+        currentSettings = &readerSettings;
+        break;
+      case 2:
+        currentSettings = &controlsSettings;
+        break;
+      case 3:
+        currentSettings = &systemSettings;
+        break;
+      default:
+        currentSettings = &appSettings;
+        break;
+    }
+  } else {
+    currentSettings = &nestedPages[pageStack.back()];
+  }
+  settingsCount = static_cast<int>(currentSettings->size());
+  selectedSettingIndex = std::clamp(restoreSelection, 0, settingsCount);
+  if (selectedSettingIndex > 0 && !isSelectableSetting(selectedSettingIndex - 1)) {
+    selectedSettingIndex = firstSelectableSettingIndex();
+  }
+  return true;
 }
 
 bool SettingsActivity::isSelectableSetting(const int settingIndex) const {
@@ -628,6 +801,11 @@ void SettingsActivity::showTransientPopup(const char* message, const int progres
 void SettingsActivity::loop() {
   bool hasChangedCategory = false;
 
+  if (libraryControlsOpen || libraryDeleteConfirmOpen) {
+    handleLibraryControlsInput();
+    return;
+  }
+
   if (pickerSetting != nullptr) {
     if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
       closeEnumPicker(false);
@@ -664,7 +842,9 @@ void SettingsActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    if (selectedSettingIndex > 0) {
+    if (leaveNestedPage()) {
+      requestUpdate();
+    } else if (selectedSettingIndex > 0) {
       selectedSettingIndex = 0;
       requestUpdate();
     } else {
@@ -711,6 +891,12 @@ void SettingsActivity::toggleCurrentSetting() {
 
   const auto& setting = *(*currentSettings)[selectedSetting];
 
+  if (setting.type == SettingType::GROUP) {
+    enterNestedPage(setting.groupId);
+    requestUpdate();
+    return;
+  }
+
   if (selectedCategoryIndex == 2 && setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     openEnumPicker(setting);
     return;
@@ -727,8 +913,12 @@ void SettingsActivity::toggleCurrentSetting() {
                                                             static_cast<int>(setting.enumValues.size()));
     SETTINGS.*(setting.valuePtr) = getEnumRawValue(setting, nextDisplayIndex);
     if (setting.nameId == StrId::STR_UI_THEME || setting.nameId == StrId::STR_FILE_BROWSER_VIEW) {
+      const int activePage = pageStack.empty() ? -1 : pageStack.back();
       buildSettingsLists();
       enterCategory(selectedCategoryIndex);
+      if (activePage >= 0) {
+        enterNestedPage(activePage);
+      }
       selectedSettingIndex = std::min(selectedSettingIndex, settingsCount);
     }
   } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
@@ -751,9 +941,6 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::CustomiseStatusBar:
         startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
-      case SettingAction::KOReaderSync:
-        startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput), resultHandler);
-        break;
       case SettingAction::FontSelection:
         startActivityForResult(
             std::make_unique<FontSelectionActivity>(renderer, mappedInput, &sdFontSystem.registry(),
@@ -761,9 +948,6 @@ void SettingsActivity::toggleCurrentSetting() {
                                                         ? FontSelectionActivity::Mode::Manage
                                                         : FontSelectionActivity::Mode::Select),
             resultHandler);
-        break;
-      case SettingAction::OPDSBrowser:
-        startActivityForResult(std::make_unique<OpdsServerListActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::Network:
         startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
@@ -773,6 +957,9 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::CheckForUpdates:
         startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::InstallUpdateFromSd:
+        startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::Language:
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput), resultHandler);
@@ -798,7 +985,7 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::ExportReadingStats: {
         showTransientPopup(tr(STR_EXPORTING), 20, 120);
-        Storage.mkdir("/exports");
+        Storage.mkdir(READING_STATS_BACKUP_DIR);
         const std::string exportPath = getReadingStatsExportPath();
         if (Storage.exists(exportPath.c_str())) {
           Storage.remove(exportPath.c_str());
@@ -836,6 +1023,9 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::ReadingProfile:
         startActivityForResult(std::make_unique<ReadingProfileActivity>(renderer, mappedInput), resultHandler);
         break;
+      case SettingAction::ReadingTimeChart:
+        startActivityForResult(std::make_unique<ReadingTimeChartActivity>(renderer, mappedInput), resultHandler);
+        break;
       case SettingAction::Achievements:
         startActivityForResult(std::make_unique<AchievementsActivity>(renderer, mappedInput), resultHandler);
         break;
@@ -852,6 +1042,9 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::OrderAppsShortcuts:
         startActivityForResult(std::make_unique<ShortcutOrderActivity>(renderer, mappedInput, ShortcutOrderGroup::Apps),
                                resultHandler);
+        break;
+      case SettingAction::LibraryControls:
+        openLibraryControls();
         break;
       case SettingAction::ResetAchievements:
         startActivityForResult(
@@ -931,6 +1124,193 @@ void SettingsActivity::closeEnumPicker(const bool apply) {
 
   pickerSetting = nullptr;
   requestUpdate();
+}
+
+void SettingsActivity::openLibraryControls() {
+  libraryControlsOpen = true;
+  libraryDeleteConfirmOpen = false;
+  libraryControlsIndex = 0;
+  libraryDeleteConfirmIndex = 0;
+  requestUpdate();
+}
+
+void SettingsActivity::closeLibraryControls() {
+  libraryControlsOpen = false;
+  libraryDeleteConfirmOpen = false;
+  libraryDeleteConfirmIndex = 0;
+  SETTINGS.saveToFile();
+  requestUpdate();
+}
+
+void SettingsActivity::handleLibraryControlsInput() {
+  if (libraryDeleteConfirmOpen) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      libraryDeleteConfirmOpen = false;
+      requestUpdate();
+      return;
+    }
+    buttonNavigator.onPreviousRelease([this] {
+      libraryDeleteConfirmIndex = 0;
+      requestUpdate();
+    });
+    buttonNavigator.onNextRelease([this] {
+      libraryDeleteConfirmIndex = 1;
+      requestUpdate();
+    });
+    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      if (libraryDeleteConfirmIndex == 1) {
+        confirmDeleteLibraryCache();
+      } else {
+        libraryDeleteConfirmOpen = false;
+        requestUpdate();
+      }
+    }
+    return;
+  }
+
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    closeLibraryControls();
+    return;
+  }
+  buttonNavigator.onNextRelease([this] {
+    libraryControlsIndex = ButtonNavigator::nextIndex(libraryControlsIndex, LIBCTL_COUNT);
+    requestUpdate();
+  });
+  buttonNavigator.onPreviousRelease([this] {
+    libraryControlsIndex = ButtonNavigator::previousIndex(libraryControlsIndex, LIBCTL_COUNT);
+    requestUpdate();
+  });
+  if (libraryControlsIndex == LIBCTL_COLLECTIONS &&
+      (mappedInput.wasPressed(MappedInputManager::Button::Left) ||
+       mappedInput.wasPressed(MappedInputManager::Button::Right))) {
+    const int delta = mappedInput.wasPressed(MappedInputManager::Button::Right) ? 1 : -1;
+    settingsLibraryCollection = static_cast<uint8_t>(
+        delta > 0 ? ButtonNavigator::nextIndex(settingsLibraryCollection, 4)
+                  : ButtonNavigator::previousIndex(settingsLibraryCollection, 4));
+    requestUpdate();
+    return;
+  }
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    executeLibraryControlAction(libraryControlsIndex);
+  }
+}
+
+void SettingsActivity::executeLibraryControlAction(const int index) {
+  switch (index) {
+    case LIBCTL_RECENT_VIEW:
+      SETTINGS.recentBooksView =
+          SETTINGS.recentBooksView == CrossPointSettings::RECENT_BOOKS_GRID
+              ? CrossPointSettings::RECENT_BOOKS_LIST
+              : CrossPointSettings::RECENT_BOOKS_GRID;
+      SETTINGS.saveToFile();
+      requestUpdate();
+      return;
+    case LIBCTL_SORT_BY:
+      if (SETTINGS.librarySort == CrossPointSettings::LIBRARY_SORT_TITLE) {
+        SETTINGS.librarySort = CrossPointSettings::LIBRARY_SORT_RECENT;
+      } else if (SETTINGS.librarySort == CrossPointSettings::LIBRARY_SORT_RECENT) {
+        SETTINGS.librarySort = CrossPointSettings::LIBRARY_SORT_PROGRESS;
+      } else {
+        SETTINGS.librarySort = CrossPointSettings::LIBRARY_SORT_TITLE;
+      }
+      SETTINGS.saveToFile();
+      requestUpdate();
+      return;
+    case LIBCTL_SORT_DIRECTION:
+      SETTINGS.librarySortDescending = SETTINGS.librarySortDescending ? 0 : 1;
+      SETTINGS.saveToFile();
+      requestUpdate();
+      return;
+    case LIBCTL_COLLECTIONS:
+      activityManager.goToLibraryCollection(settingsLibraryCollection);
+      return;
+    case LIBCTL_TO_READ_SHELF:
+      SETTINGS.showToReadShelf = SETTINGS.showToReadShelf ? 0 : 1;
+      SETTINGS.saveToFile();
+      requestUpdate();
+      return;
+    case LIBCTL_REMOVE_READ_RECENTS:
+      SETTINGS.removeReadBooksFromRecents = SETTINGS.removeReadBooksFromRecents ? 0 : 1;
+      SETTINGS.saveToFile();
+      requestUpdate();
+      return;
+    case LIBCTL_DELETE_CACHE:
+      libraryDeleteConfirmOpen = true;
+      libraryDeleteConfirmIndex = 0;
+      requestUpdate();
+      return;
+    case LIBCTL_REINDEX:
+      SETTINGS.saveToFile();
+      activityManager.goToLibraryReindex();
+      return;
+    default:
+      break;
+  }
+}
+
+void SettingsActivity::confirmDeleteLibraryCache() {
+  LibraryActivity::clearGeneratedLibraryCache();
+  libraryDeleteConfirmOpen = false;
+  libraryControlsOpen = false;
+  showTransientPopup(tr(STR_DONE), 100, 350);
+  requestUpdate(true);
+}
+
+void SettingsActivity::renderLibraryControlsHud() const {
+  CompactHudRenderer::ActionListConfig config;
+  config.title = tr(STR_LIBRARY_SETTINGS);
+  config.selectedIndex = libraryControlsIndex;
+  config.minWidth = 330;
+  config.maxRows = 8;
+  config.wrapRows = true;
+  auto sortLabel = []() -> const char* {
+    switch (SETTINGS.librarySort) {
+      case CrossPointSettings::LIBRARY_SORT_RECENT:
+        return tr(STR_RECENT_BOOKS);
+      case CrossPointSettings::LIBRARY_SORT_PROGRESS:
+        return tr(STR_PROGRESS);
+      case CrossPointSettings::LIBRARY_SORT_TITLE:
+      default:
+        return tr(STR_TITLE);
+    }
+  };
+  auto collectionLabel = []() -> const char* {
+    switch (settingsLibraryCollection) {
+      case 1:
+        return tr(STR_AUTHOR);
+      case 2:
+        return tr(STR_TO_READ);
+      case 3:
+        return tr(STR_FINISHED_BOOKS);
+      case 0:
+      default:
+        return tr(STR_SERIES);
+    }
+  };
+  config.rows = {
+      {tr(STR_MENU_RECENT_BOOKS),
+       SETTINGS.recentBooksView == CrossPointSettings::RECENT_BOOKS_GRID ? tr(STR_FILE_VIEW_GRID)
+                                                                         : tr(STR_FILE_VIEW_LIST)},
+      {tr(STR_LIBRARY_SORT_BY), sortLabel()},
+      {tr(STR_SORT_DIRECTION), SETTINGS.librarySortDescending ? tr(STR_SORT_DESC) : tr(STR_SORT_ASC)},
+      {tr(STR_COLLECTIONS), collectionLabel()},
+      {tr(STR_SHOW_TO_READ_SHELF), SETTINGS.showToReadShelf ? tr(STR_STATE_ON) : tr(STR_STATE_OFF)},
+      {tr(STR_REMOVE_READ_BOOKS_FROM_RECENTS),
+       SETTINGS.removeReadBooksFromRecents ? tr(STR_STATE_ON) : tr(STR_STATE_OFF)},
+      {tr(STR_DELETE_LIBRARY_CACHE), ""},
+      {tr(STR_RESET_LIBRARY_INDEX), ""},
+  };
+  CompactHudRenderer::drawActionList(renderer, mappedInput, config);
+}
+
+void SettingsActivity::renderLibraryDeleteConfirmHud() const {
+  CompactHudRenderer::ConfirmationConfig config;
+  config.title = tr(STR_DELETE_LIBRARY_CACHE_CONFIRM);
+  config.body = {tr(STR_LIBRARY_CACHE_DELETE_HINT)};
+  config.cancelLabel = tr(STR_CANCEL);
+  config.confirmLabel = tr(STR_DELETE);
+  config.selectedAction = libraryDeleteConfirmIndex;
+  CompactHudRenderer::drawConfirmation(renderer, mappedInput, config);
 }
 
 void SettingsActivity::renderEnumPicker() const {
@@ -1149,6 +1529,14 @@ void SettingsActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const char* settingsTitle = tr(STR_SETTINGS_TITLE);
   const char* selectedCategoryLabel = I18N.get(categoryNames[selectedCategoryIndex]);
+  if (!pageStack.empty()) {
+    for (const auto& group : groupSettings) {
+      if (group.type == SettingType::GROUP && group.groupId == pageStack.back()) {
+        selectedCategoryLabel = I18N.get(group.nameId);
+        break;
+      }
+    }
+  }
   const char* firmwareVersion = CROSSPOINT_VERSION;
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, settingsTitle, nullptr);
@@ -1213,14 +1601,25 @@ void SettingsActivity::render(RenderLock&&) {
     confirmLabel = I18N.get(categoryNames[(selectedCategoryIndex + 1) % categoryCount]);
   } else {
     const auto& selectedSetting = *(*currentSettings)[selectedSettingIndex - 1];
-    confirmLabel = selectedCategoryIndex == 2 && selectedSetting.type == SettingType::ENUM
+    confirmLabel = selectedSetting.type == SettingType::GROUP
+                       ? tr(STR_OPEN)
+                       : (selectedCategoryIndex == 2 && selectedSetting.type == SettingType::ENUM
                        ? tr(STR_OPEN)
                        : ((selectedSetting.type == SettingType::ACTION || selectedSetting.type == SettingType::SECTION)
                               ? tr(STR_SELECT)
-                              : tr(STR_TOGGLE));
+                              : tr(STR_TOGGLE)));
   }
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+
+  if (libraryDeleteConfirmOpen) {
+    renderLibraryDeleteConfirmHud();
+    return;
+  }
+  if (libraryControlsOpen) {
+    renderLibraryControlsHud();
+    return;
+  }
 
   // Always use standard refresh for settings screen
   renderer.displayBuffer();

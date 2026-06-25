@@ -174,9 +174,12 @@ class ReadingStatsStore {
                       uint8_t chapterProgressPercent = 0);
   void endSession();
   bool adjustBookReadingTime(const std::string& path, uint32_t dayOrdinal, int32_t deltaMs);
+  bool setBookStartDate(const std::string& path, uint32_t dayOrdinal);
+  bool setBookFinishDate(const std::string& path, uint32_t dayOrdinal);
   bool updateBookMetadata(const std::string& path, const std::string& title, const std::string& author,
                           const std::string& coverBmpPath);
   bool removeBook(const std::string& path);
+  bool repairRenamedBooks(const std::vector<std::string>& livePaths);
   const ReadingBookStats* findBook(const std::string& key) const;
   const ReadingBookStats* findMatchingBookForPath(const std::string& path, const std::string& title = "",
                                                   const std::string& author = "") const;
@@ -198,6 +201,7 @@ class ReadingStatsStore {
   bool hasReadingDays() const { return !readingDays.empty(); }
 
   void reset();
+  void resetAllTimeStats();
   bool exportToFile(const std::string& path) const;
   bool importFromFile(const std::string& path);
   bool releaseMemoryForNetwork();

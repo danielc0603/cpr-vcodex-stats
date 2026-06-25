@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "../Activity.h"
-#include "./FileBrowserActivity.h"
 #include "util/ButtonNavigator.h"
 
 struct RecentBook;
@@ -27,7 +26,6 @@ class HomeActivity final : public Activity {
   bool recentsLoading = false;
   bool recentsLoaded = false;
   bool firstRenderDone = false;
-  bool hasOpdsServers = false;
   bool confirmLongPressHandled = false;
   bool holdPreviewVisible = false;
   bool coverRendered = false;      // Track if cover has been rendered once
@@ -41,7 +39,6 @@ class HomeActivity final : public Activity {
   void onAppsOpen();
   void onReadingStatsOpen();
   void onSyncDayOpen();
-  void onOpdsBrowserOpen();
 
   int getMenuItemCount() const;
   void rebuildHomeShortcutEntries();

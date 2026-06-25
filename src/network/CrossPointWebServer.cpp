@@ -17,8 +17,6 @@
 #include "AchievementsStore.h"
 #include "BookMetadataStore.h"
 #include "CrossPointSettings.h"
-#include "KOReaderCredentialStore.h"
-#include "OpdsServerStore.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "WebDAVHandler.h"
@@ -39,6 +37,14 @@ bool isTrackedReadingFile(const String& fileName) {
   const std::string_view fileView{fileName.c_str(), fileName.length()};
   return FsHelpers::hasEpubExtension(fileView) || FsHelpers::hasXtcExtension(fileView) ||
          FsHelpers::hasTxtExtension(fileView) || FsHelpers::hasMarkdownExtension(fileView);
+}
+
+bool isAllowedDownloadPath(const String& path) {
+  return path == "/.cpr-vcodex-stats-backup/reading_stats_backup.json" ||
+         path.startsWith("/.cpr-vcodex-stats-backup/reading_stats") ||
+         path == "/.crosspoint/manual_library.json" ||
+         path == "/.crosspoint/library_metadata.json" ||
+         path == "/.crosspoint/settings.json";
 }
 
 bool isCompletedReadingFilePath(const String& filePath) {
@@ -212,17 +218,15 @@ int webSettingsCategoryIndex(StrId category) {
       return 4;
     case StrId::STR_SHORTCUTS_SECTION:
       return 5;
-    case StrId::STR_KOREADER_SYNC:
-      return 6;
     case StrId::STR_CUSTOMISE_STATUS_BAR:
-      return 7;
+      return 6;
     default:
       return -1;
   }
 }
 
 enum class WebSettingType : uint8_t { Toggle, Enum, Value, String };
-enum class WebDynamicSetting : uint8_t { None, KoUsername, KoPassword, KoServerUrl, KoMatchMethod };
+enum class WebDynamicSetting : uint8_t { None };
 
 struct WebSettingDef {
   StrId nameId;
@@ -271,13 +275,11 @@ constexpr uint8_t OPT_SHORT_PWR_VALUES[] = {CrossPointSettings::IGNORE, CrossPoi
                                             CrossPointSettings::CYCLE_PAGE_TURN};
 constexpr StrId OPT_LONG_MENU_ACTION[] = {StrId::STR_IGNORE,       StrId::STR_BIONIC_READING,
                                           StrId::STR_FONT_FAMILY,  StrId::STR_BOOKMARKS,
-                                          StrId::STR_SYNC_PROGRESS, StrId::STR_MARK_FINISHED,
-                                          StrId::STR_READING_STATS};
+                                          StrId::STR_MARK_FINISHED, StrId::STR_READING_STATS};
 constexpr uint8_t OPT_LONG_MENU_ACTION_VALUES[] = {CrossPointSettings::LONG_MENU_OFF,
                                                    CrossPointSettings::LONG_MENU_TOGGLE_BIONIC,
                                                    CrossPointSettings::LONG_MENU_CHANGE_FONT,
                                                    CrossPointSettings::LONG_MENU_TOGGLE_BOOKMARK,
-                                                   CrossPointSettings::LONG_MENU_SYNC_PROGRESS,
                                                    CrossPointSettings::LONG_MENU_MARK_FINISHED,
                                                    CrossPointSettings::LONG_MENU_READING_STATS};
 constexpr StrId OPT_FRONT_LONG_PRESS[] = {StrId::STR_STATE_OFF, StrId::STR_LONG_PRESS_SKIP, StrId::STR_ORIENTATION};
@@ -299,8 +301,6 @@ constexpr StrId OPT_STUDY_MODE[] = {StrId::STR_DUE, StrId::STR_SCHEDULED, StrId:
 constexpr StrId OPT_SESSION_SIZE[] = {StrId::STR_NUM_10, StrId::STR_NUM_20, StrId::STR_NUM_30, StrId::STR_NUM_50,
                                       StrId::STR_ALL};
 constexpr StrId OPT_SHORTCUT_LOCATION[] = {StrId::STR_HOME_LOCATION, StrId::STR_APPS};
-constexpr StrId OPT_KO_MATCH[] = {StrId::STR_FILENAME, StrId::STR_BINARY};
-constexpr StrId OPT_OPDS_FILENAME_FORMAT[] = {StrId::STR_AUTHOR_TITLE, StrId::STR_TITLE_AUTHOR};
 constexpr StrId OPT_BOOK_CHAPTER_HIDE[] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
 constexpr StrId OPT_BAR_THICKNESS[] = {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_PROGRESS_BAR_MEDIUM,
                                        StrId::STR_PROGRESS_BAR_THICK};
@@ -313,11 +313,6 @@ constexpr StrId OPT_BAR_THICKNESS[] = {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_
   {name, category, WebSettingType::Enum, &CrossPointSettings::member, opts, values, static_cast<uint8_t>(sizeof(opts) / sizeof(opts[0])), 0, 0, 0, WebDynamicSetting::None, key}
 #define WEB_VALUE(name, member, lo, hi, inc, key, category) \
   {name, category, WebSettingType::Value, &CrossPointSettings::member, nullptr, nullptr, 0, lo, hi, inc, WebDynamicSetting::None, key}
-#define WEB_DYNAMIC(name, kind, type, opts, key, category)                                                  \
-  {name, category, type, nullptr, opts, nullptr, static_cast<uint8_t>(sizeof(opts) / sizeof(opts[0])), 0, 0, 0, kind, key}
-#define WEB_DYNAMIC_STRING(name, kind, key, category) \
-  {name, category, WebSettingType::String, nullptr, nullptr, nullptr, 0, 0, 0, 0, kind, key}
-
 constexpr WebSettingDef WEB_SETTINGS[] = {
     WEB_ENUM(StrId::STR_SLEEP_SCREEN, sleepScreen, OPT_SLEEP_SCREEN, "sleepScreen", StrId::STR_CAT_DISPLAY),
     WEB_ENUM(StrId::STR_SLEEP_COVER_MODE, sleepScreenCoverMode, OPT_FIT_CROP, "sleepScreenCoverMode",
@@ -380,6 +375,8 @@ constexpr WebSettingDef WEB_SETTINGS[] = {
     WEB_TOGGLE(StrId::STR_ENABLE_ACHIEVEMENTS, achievementsEnabled, "achievementsEnabled", StrId::STR_APPS),
     WEB_TOGGLE(StrId::STR_ACHIEVEMENT_POPUPS, achievementPopups, "achievementPopups", StrId::STR_APPS),
 
+    WEB_ENUM(StrId::STR_LIBRARY, libraryShortcut, OPT_SHORTCUT_LOCATION, "libraryShortcut",
+             StrId::STR_SHORTCUTS_SECTION),
     WEB_ENUM(StrId::STR_BROWSE_FILES, browseFilesShortcut, OPT_SHORTCUT_LOCATION, "browseFilesShortcut",
              StrId::STR_SHORTCUTS_SECTION),
     WEB_ENUM(StrId::STR_SYNC_DAY, syncDayShortcut, OPT_SHORTCUT_LOCATION, "syncDayShortcut",
@@ -407,17 +404,6 @@ constexpr WebSettingDef WEB_SETTINGS[] = {
     WEB_ENUM(StrId::STR_SLEEP, sleepShortcut, OPT_SHORTCUT_LOCATION, "sleepShortcut",
              StrId::STR_SHORTCUTS_SECTION),
 
-    WEB_DYNAMIC_STRING(StrId::STR_KOREADER_USERNAME, WebDynamicSetting::KoUsername, "koUsername",
-                       StrId::STR_KOREADER_SYNC),
-    WEB_DYNAMIC_STRING(StrId::STR_KOREADER_PASSWORD, WebDynamicSetting::KoPassword, "koPassword",
-                       StrId::STR_KOREADER_SYNC),
-    WEB_DYNAMIC_STRING(StrId::STR_SYNC_SERVER_URL, WebDynamicSetting::KoServerUrl, "koServerUrl",
-                       StrId::STR_KOREADER_SYNC),
-    WEB_DYNAMIC(StrId::STR_DOCUMENT_MATCHING, WebDynamicSetting::KoMatchMethod, WebSettingType::Enum, OPT_KO_MATCH,
-                "koMatchMethod", StrId::STR_KOREADER_SYNC),
-    WEB_ENUM(StrId::STR_OPDS_FILENAME_FORMAT, opdsFilenameFormat, OPT_OPDS_FILENAME_FORMAT, "opdsFilenameFormat",
-             StrId::STR_KOREADER_SYNC),
-
     WEB_TOGGLE(StrId::STR_CHAPTER_PAGE_COUNT, statusBarChapterPageCount, "statusBarChapterPageCount",
                StrId::STR_CUSTOMISE_STATUS_BAR),
     WEB_TOGGLE(StrId::STR_BOOK_PROGRESS_PERCENTAGE, statusBarBookProgressPercentage,
@@ -431,8 +417,6 @@ constexpr WebSettingDef WEB_SETTINGS[] = {
     WEB_TOGGLE(StrId::STR_BATTERY, statusBarBattery, "statusBarBattery", StrId::STR_CUSTOMISE_STATUS_BAR),
 };
 
-#undef WEB_DYNAMIC_STRING
-#undef WEB_DYNAMIC
 #undef WEB_VALUE
 #undef WEB_ENUM_MAPPED
 #undef WEB_ENUM
@@ -514,6 +498,7 @@ void CrossPointWebServer::begin() {
 
   server->on("/api/status", HTTP_GET, [this] { handleStatus(); });
   server->on("/api/files", HTTP_GET, [this] { handleFileListData(); });
+  server->on("/api/reading-stats-backups", HTTP_GET, [this] { handleReadingStatsBackups(); });
   server->on("/download", HTTP_GET, [this] { handleDownload(); });
 
   // Upload endpoint with special handling for multipart form data
@@ -536,11 +521,6 @@ void CrossPointWebServer::begin() {
   server->on("/api/settings", HTTP_GET, [this] { handleGetSettings(); });
   server->on("/api/settings", HTTP_POST, [this] { handlePostSettings(); });
   server->on("/api/book-metadata", HTTP_POST, [this] { handlePostBookMetadata(); });
-
-  // OPDS server endpoints
-  server->on("/api/opds", HTTP_GET, [this] { handleGetOpdsServers(); });
-  server->on("/api/opds", HTTP_POST, [this] { handlePostOpdsServer(); });
-  server->on("/api/opds/delete", HTTP_POST, [this] { handleDeleteOpdsServer(); });
 
   server->onNotFound([this] { handleNotFound(); });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
@@ -877,24 +857,28 @@ void CrossPointWebServer::handleDownload() const {
     return;
   }
 
-  String itemPath = server->arg("path");
+  const String requestedPath = server->arg("path");
+  if (requestedPath.indexOf("..") >= 0) {
+    server->send(400, "text/plain", "Invalid path");
+    return;
+  }
+  String itemPath = normalizeWebPath(requestedPath);
   if (itemPath.isEmpty() || itemPath == "/") {
     server->send(400, "text/plain", "Invalid path");
     return;
   }
-  if (!itemPath.startsWith("/")) {
-    itemPath = "/" + itemPath;
-  }
-
   const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
-  if (itemName.startsWith(".")) {
+  const bool allowedSystemFile = isAllowedDownloadPath(itemPath);
+  if (itemName.startsWith(".") && !allowedSystemFile) {
     server->send(403, "text/plain", "Cannot access system files");
     return;
   }
-  for (const auto* item : HIDDEN_ITEMS) {
-    if (itemName.equals(item)) {
-      server->send(403, "text/plain", "Cannot access protected items");
-      return;
+  if (!allowedSystemFile) {
+    for (const auto* item : HIDDEN_ITEMS) {
+      if (itemName.equals(item)) {
+        server->send(403, "text/plain", "Cannot access protected items");
+        return;
+      }
     }
   }
 
@@ -914,24 +898,92 @@ void CrossPointWebServer::handleDownload() const {
     return;
   }
 
-  String contentType = "application/octet-stream";
-  if (isEpubFile(itemPath)) {
-    contentType = "application/epub+zip";
-  }
-
   char nameBuf[128] = {0};
   String filename = "download";
   if (file.getName(nameBuf, sizeof(nameBuf))) {
     filename = nameBuf;
   }
 
-  server->setContentLength(file.size());
+  const size_t fileSize = file.size();
+  server->setContentLength(fileSize);
   server->sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
-  server->send(200, contentType.c_str(), "");
+  server->send(200, "application/octet-stream", "");
 
   NetworkClient client = server->client();
-  client.write(file);
+  constexpr size_t DOWNLOAD_CHUNK_SIZE = 2048;
+  uint8_t buffer[DOWNLOAD_CHUNK_SIZE];
+  size_t sent = 0;
+  bool failed = false;
+  while (file.available() && client.connected()) {
+    esp_task_wdt_reset();
+    const int bytesRead = file.read(buffer, sizeof(buffer));
+    if (bytesRead <= 0) {
+      failed = true;
+      break;
+    }
+    size_t written = 0;
+    while (written < static_cast<size_t>(bytesRead) && client.connected()) {
+      const size_t chunkWritten = client.write(buffer + written, static_cast<size_t>(bytesRead) - written);
+      if (chunkWritten == 0) {
+        failed = true;
+        break;
+      }
+      written += chunkWritten;
+      sent += chunkWritten;
+      delay(0);
+    }
+    if (failed) break;
+    delay(0);
+  }
   file.close();
+  if (failed || sent != fileSize) {
+    LOG_DBG("WEB", "[DOWNLOAD] Incomplete transfer for %s: sent %u of %u", itemPath.c_str(),
+            static_cast<unsigned>(sent), static_cast<unsigned>(fileSize));
+    client.stop();
+  }
+}
+
+void CrossPointWebServer::handleReadingStatsBackups() const {
+  constexpr const char* BACKUP_DIR = "/.cpr-vcodex-stats-backup";
+  FsFile root = Storage.open(BACKUP_DIR);
+  if (!root || !root.isDirectory()) {
+    if (root) root.close();
+    server->send(404, "application/json", "{\"error\":\"No reading stats backups found\"}");
+    return;
+  }
+
+  server->setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server->send(200, "application/json", "");
+  server->sendContent("[");
+  bool first = true;
+  FsFile file = root.openNextFile();
+  char nameBuf[160];
+  while (file) {
+    file.getName(nameBuf, sizeof(nameBuf));
+    String name(nameBuf);
+    const int slash = name.lastIndexOf('/');
+    if (slash >= 0) {
+      name = name.substring(slash + 1);
+    }
+    if (!file.isDirectory() && name.startsWith("reading_stats")) {
+      if (!first) {
+        server->sendContent(",");
+      }
+      first = false;
+      JsonDocument doc;
+      doc["name"] = name;
+      doc["size"] = file.size();
+      doc["downloadUrl"] = String("/download?path=") + BACKUP_DIR + "/" + name;
+      String json;
+      serializeJson(doc, json);
+      server->sendContent(json);
+    }
+    file.close();
+    file = root.openNextFile();
+  }
+  root.close();
+  server->sendContent("]");
+  server->sendContent("");
 }
 
 // Diagnostic counters for upload performance analysis
@@ -1531,8 +1583,6 @@ void CrossPointWebServer::handleGetSettings() const {
             }
           }
           sendJsonIntField(server.get(), "value", displayValue);
-        } else if (s.dynamic == WebDynamicSetting::KoMatchMethod) {
-          sendJsonIntField(server.get(), "value", static_cast<int>(KOREADER_STORE.getMatchMethod()));
         } else {
           sendJsonIntField(server.get(), "value", 0);
         }
@@ -1566,21 +1616,7 @@ void CrossPointWebServer::handleGetSettings() const {
       case WebSettingType::String: {
         sendJsonStringField(server.get(), "type", "string");
         server->sendContent(",", 1);
-        std::string value;
-        switch (s.dynamic) {
-          case WebDynamicSetting::KoUsername:
-            value = KOREADER_STORE.getUsername();
-            break;
-          case WebDynamicSetting::KoPassword:
-            value = KOREADER_STORE.getPassword();
-            break;
-          case WebDynamicSetting::KoServerUrl:
-            value = KOREADER_STORE.getServerUrl();
-            break;
-          default:
-            break;
-        }
-        sendJsonStringField(server.get(), "value", value.c_str());
+        sendJsonStringField(server.get(), "value", "");
         break;
       }
       default:
@@ -1620,7 +1656,6 @@ void CrossPointWebServer::handlePostSettings() {
 
   int applied = 0;
   bool saveSettings = false;
-  bool saveKOReader = false;
 
   for (const auto& s : WEB_SETTINGS) {
     if (!isWebSettingVisible(s)) continue;
@@ -1642,9 +1677,6 @@ void CrossPointWebServer::handlePostSettings() {
           if (s.valuePtr) {
             SETTINGS.*(s.valuePtr) = s.optionValues ? s.optionValues[val] : static_cast<uint8_t>(val);
             saveSettings = true;
-          } else if (s.dynamic == WebDynamicSetting::KoMatchMethod) {
-            KOREADER_STORE.setMatchMethod(static_cast<DocumentMatchMethod>(val));
-            saveKOReader = true;
           }
           applied++;
         }
@@ -1662,23 +1694,6 @@ void CrossPointWebServer::handlePostSettings() {
         break;
       }
       case WebSettingType::String: {
-        const std::string val = doc[s.key].as<std::string>();
-        switch (s.dynamic) {
-          case WebDynamicSetting::KoUsername:
-            KOREADER_STORE.setCredentials(val, KOREADER_STORE.getPassword());
-            saveKOReader = true;
-            break;
-          case WebDynamicSetting::KoPassword:
-            KOREADER_STORE.setCredentials(KOREADER_STORE.getUsername(), val);
-            saveKOReader = true;
-            break;
-          case WebDynamicSetting::KoServerUrl:
-            KOREADER_STORE.setServerUrl(val);
-            saveKOReader = true;
-            break;
-          default:
-            break;
-        }
         applied++;
         break;
       }
@@ -1689,9 +1704,6 @@ void CrossPointWebServer::handlePostSettings() {
 
   if (saveSettings) {
     SETTINGS.saveToFile();
-  }
-  if (saveKOReader) {
-    KOREADER_STORE.saveToFile();
   }
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
@@ -1720,117 +1732,6 @@ void CrossPointWebServer::handlePostBookMetadata() {
   const std::string bookId = Storage.exists(path.c_str()) ? BookIdentity::resolveStableBookId(path) : "";
   const bool ok = BOOK_METADATA.mergeMetadata(path, bookId, metadata, "calibre-api");
   server->send(ok ? 200 : 500, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
-}
-
-// ---- OPDS Server API ----
-
-void CrossPointWebServer::handleGetOpdsServers() const {
-  const auto& servers = OPDS_STORE.getServers();
-
-  // Stream JSON array incrementally to avoid allocating the full response in memory
-  server->setContentLength(CONTENT_LENGTH_UNKNOWN);
-  server->send(200, "application/json", "");
-  server->sendContent("[");
-
-  for (size_t i = 0; i < servers.size(); i++) {
-    if (i > 0) server->sendContent(",", 1);
-    server->sendContent("{", 1);
-    sendJsonIntField(server.get(), "index", static_cast<int>(i));
-    server->sendContent(",", 1);
-    sendJsonStringField(server.get(), "name", servers[i].name.c_str());
-    server->sendContent(",", 1);
-    sendJsonStringField(server.get(), "url", servers[i].url.c_str());
-    server->sendContent(",", 1);
-    sendJsonStringField(server.get(), "username", servers[i].username.c_str());
-    sendRaw(server.get(), ",\"hasPassword\":");
-    sendRaw(server.get(), servers[i].password.empty() ? "false" : "true");
-    server->sendContent("}", 1);
-  }
-
-  server->sendContent("]");
-  server->sendContent("");
-  LOG_DBG("WEB", "Served OPDS servers API (%zu servers)", servers.size());
-}
-
-void CrossPointWebServer::handlePostOpdsServer() {
-  if (!server->hasArg("plain")) {
-    server->send(400, "text/plain", "Missing JSON body");
-    return;
-  }
-
-  const String body = server->arg("plain");
-  JsonDocument doc;
-  const DeserializationError err = deserializeJson(doc, body);
-  if (err) {
-    server->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
-    return;
-  }
-
-  OpdsServer opdsServer;
-  opdsServer.name = doc["name"] | std::string("");
-  opdsServer.url = doc["url"] | std::string("");
-  opdsServer.username = doc["username"] | std::string("");
-
-  // The password field is optional in the JSON payload. When absent (vs. present but empty),
-  // we preserve the existing password — the web UI omits it when the user hasn't changed it.
-  bool hasPasswordField = doc["password"].is<const char*>() || doc["password"].is<std::string>();
-  std::string password = doc["password"] | std::string("");
-
-  if (doc["index"].is<int>()) {
-    int idx = doc["index"].as<int>();
-    if (idx < 0 || idx >= static_cast<int>(OPDS_STORE.getCount())) {
-      server->send(400, "text/plain", "Invalid server index");
-      return;
-    }
-    // Preserve existing password if not explicitly provided
-    if (!hasPasswordField) {
-      const auto* existing = OPDS_STORE.getServer(static_cast<size_t>(idx));
-      if (existing) password = existing->password;
-    }
-    opdsServer.password = password;
-    OPDS_STORE.updateServer(static_cast<size_t>(idx), opdsServer);
-    LOG_DBG("WEB", "Updated OPDS server at index %d", idx);
-  } else {
-    opdsServer.password = password;
-    if (!OPDS_STORE.addServer(opdsServer)) {
-      server->send(400, "text/plain", "Cannot add server (limit reached)");
-      return;
-    }
-    LOG_DBG("WEB", "Added new OPDS server: %s", opdsServer.name.c_str());
-  }
-
-  server->send(200, "text/plain", "OK");
-}
-
-// Uses POST (not HTTP DELETE) because ESP32 WebServer doesn't support DELETE with body.
-void CrossPointWebServer::handleDeleteOpdsServer() {
-  if (!server->hasArg("plain")) {
-    server->send(400, "text/plain", "Missing JSON body");
-    return;
-  }
-
-  const String body = server->arg("plain");
-  JsonDocument doc;
-  const DeserializationError err = deserializeJson(doc, body);
-  if (err) {
-    server->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
-    return;
-  }
-
-  if (!doc["index"].is<int>()) {
-    server->send(400, "text/plain", "Missing index");
-    return;
-  }
-
-  int idx = doc["index"].as<int>();
-  if (idx < 0 || idx >= static_cast<int>(OPDS_STORE.getCount())) {
-    server->send(400, "text/plain", "Invalid server index");
-    return;
-  }
-
-  OPDS_STORE.removeServer(static_cast<size_t>(idx));
-  LOG_DBG("WEB", "Deleted OPDS server at index %d", idx);
-  server->send(200, "text/plain", "OK");
 }
 
 // WebSocket callback trampoline

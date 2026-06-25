@@ -2,8 +2,9 @@
 
 #include <I18n.h>
 
-#include "../../components/UITheme.h"
-#include "HalDisplay.h"
+#include <algorithm>
+
+#include "CompactHudRenderer.h"
 
 ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                            const std::string& heading, const std::string& body)
@@ -11,62 +12,60 @@ ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputMan
 
 void ConfirmationActivity::onEnter() {
   Activity::onEnter();
+  selectedAction = 1;
 
   lineHeight = renderer.getLineHeight(fontId);
-  const int maxWidth = renderer.getScreenWidth() - (margin * 2);
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  panelWidth = std::min(pageWidth - margin * 2, std::max(220, pageWidth * 2 / 3));
+  const int innerWidth = panelWidth - 28;
 
   if (!heading.empty()) {
-    safeHeading = renderer.truncatedText(fontId, heading.c_str(), maxWidth, EpdFontFamily::BOLD);
+    safeHeading = renderer.truncatedText(fontId, heading.c_str(), innerWidth, EpdFontFamily::BOLD);
   }
   if (!body.empty()) {
-    safeBody = renderer.truncatedText(fontId, body.c_str(), maxWidth, EpdFontFamily::REGULAR);
+    bodyLines = renderer.wrappedText(fontId, body.c_str(), innerWidth, 3);
+    safeBody = bodyLines.empty() ? "" : bodyLines.front();
   }
 
-  int totalHeight = 0;
-  if (!safeHeading.empty()) totalHeight += lineHeight;
-  if (!safeBody.empty()) totalHeight += lineHeight;
-  if (!safeHeading.empty() && !safeBody.empty()) totalHeight += spacing;
+  panelHeight = 34;
+  if (!safeHeading.empty()) panelHeight += lineHeight + spacing;
+  panelHeight += std::max(1, static_cast<int>(bodyLines.size())) * (lineHeight + 2);
+  panelHeight += 46;
 
-  startY = (renderer.getScreenHeight() - totalHeight) / 2;
+  panelX = (pageWidth - panelWidth) / 2;
+  panelY = (pageHeight - panelHeight) / 2;
 
   requestUpdate(true);
 }
 
 void ConfirmationActivity::render(RenderLock&& lock) {
-  renderer.clearScreen();
-
-  int currentY = startY;
-  LOG_DBG("CONF", "currentY: %d", currentY);
-  // Draw Heading
-  if (!safeHeading.empty()) {
-    renderer.drawCenteredText(fontId, currentY, safeHeading.c_str(), true, EpdFontFamily::BOLD);
-    currentY += lineHeight + spacing;
-  }
-
-  // Draw Body
-  if (!safeBody.empty()) {
-    renderer.drawCenteredText(fontId, currentY, safeBody.c_str(), true, EpdFontFamily::REGULAR);
-  }
-
-  // Draw UI Elements
-  const auto labels = mappedInput.mapLabels("", "", I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
+  CompactHudRenderer::ConfirmationConfig config;
+  config.title = safeHeading.empty() ? heading : safeHeading;
+  config.body = bodyLines;
+  config.selectedAction = selectedAction;
+  CompactHudRenderer::drawConfirmation(renderer, mappedInput, config);
 }
 
 void ConfirmationActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+    selectedAction = 1 - selectedAction;
+    requestUpdate();
+    return;
+  }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     ActivityResult res;
-    res.isCancelled = false;
+    res.isCancelled = true;
     setResult(std::move(res));
     finish();
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     ActivityResult res;
-    res.isCancelled = true;
+    res.isCancelled = selectedAction == 0;
     setResult(std::move(res));
     finish();
     return;

@@ -97,6 +97,7 @@ class CrossPointWebServer {
   void handleFileList() const;
   void handleFileListData() const;
   void handleDownload() const;
+  void handleReadingStatsBackups() const;
   void handleUpload(UploadState& state) const;
   void handleUploadPost(UploadState& state) const;
   void handleCreateFolder() const;
@@ -110,8 +111,4 @@ class CrossPointWebServer {
   void handlePostSettings();
   void handlePostBookMetadata();
 
-  // OPDS server handlers
-  void handleGetOpdsServers() const;
-  void handlePostOpdsServer();
-  void handleDeleteOpdsServer();
 };

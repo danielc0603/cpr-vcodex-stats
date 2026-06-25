@@ -85,9 +85,11 @@ void ReadingDateSelectionActivity::adjustSelectedField(const int delta) {
   } else if (selectedField == 1) {
     month = wrapValue(month, delta, MIN_MONTH, MAX_MONTH);
     day = std::min(day, getDaysInMonth(year, month));
-  } else {
+  } else if (selectedField == 2) {
     year = std::clamp(year + delta, MIN_YEAR, MAX_YEAR);
     day = std::min(day, getDaysInMonth(year, month));
+  } else {
+    return;
   }
   requestUpdate();
 }
@@ -115,17 +117,22 @@ void ReadingDateSelectionActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (allowClear && selectedField == FIELD_COUNT) {
+      setResult(ActivityResult{PageResult{0}});
+      finish();
+      return;
+    }
     finishWithDate();
     return;
   }
 
   buttonNavigator.onRelease({MappedInputManager::Button::Down}, [this] {
-    selectedField = ButtonNavigator::nextIndex(selectedField, FIELD_COUNT);
+    selectedField = ButtonNavigator::nextIndex(selectedField, allowClear ? FIELD_COUNT + 1 : FIELD_COUNT);
     requestUpdate();
   });
 
   buttonNavigator.onRelease({MappedInputManager::Button::Up}, [this] {
-    selectedField = ButtonNavigator::previousIndex(selectedField, FIELD_COUNT);
+    selectedField = ButtonNavigator::previousIndex(selectedField, allowClear ? FIELD_COUNT + 1 : FIELD_COUNT);
     requestUpdate();
   });
 
@@ -140,21 +147,24 @@ void ReadingDateSelectionActivity::render(RenderLock&&) {
   const int pageWidth = renderer.getScreenWidth();
   const int sidePadding = metrics.contentSidePadding;
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int listHeight = metrics.listWithSubtitleRowHeight * FIELD_COUNT;
+  const int rowCount = allowClear ? FIELD_COUNT + 1 : FIELD_COUNT;
+  const int listHeight = metrics.listWithSubtitleRowHeight * rowCount;
 
   HeaderDateUtils::drawHeaderWithDate(renderer, tr(STR_SET_DATE), getSelectedDateLabel().c_str());
 
   GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, listHeight}, FIELD_COUNT, selectedField,
+      renderer, Rect{0, contentTop, pageWidth, listHeight}, rowCount, selectedField,
       [](int index) {
         if (index == 0) return std::string(tr(STR_DAY));
         if (index == 1) return std::string(tr(STR_MONTH));
-        return std::string(tr(STR_YEAR));
+        if (index == 2) return std::string(tr(STR_YEAR));
+        return std::string(tr(STR_CLEAR_BUTTON));
       },
       [this](int index) {
         if (index == 0) return formatTwoDigits(day);
         if (index == 1) return formatTwoDigits(month);
-        return std::to_string(year);
+        if (index == 2) return std::to_string(year);
+        return std::string(tr(STR_NOT_SET));
       },
       [](int) { return UIIcon::Recent; }, nullptr, false);
 

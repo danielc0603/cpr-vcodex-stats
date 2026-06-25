@@ -11,6 +11,7 @@
 #include "ReadingStatsDetailActivity.h"
 #include "ReadingStatsExtendedActivity.h"
 #include "ReadingStatsStore.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HeaderDateUtils.h"
@@ -151,85 +152,6 @@ int originalBookIndexForSelection(const BookSections& sections, const int select
 }
 
 void drawMiniProgressBar(GfxRenderer& renderer, const Rect& rect, const uint8_t percent);
-
-class RemoveStatsConfirmationActivity final : public Activity {
-  std::string bookTitle;
-  bool waitForConfirmRelease = false;
-  bool waitForBackRelease = false;
-
- public:
-  RemoveStatsConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookTitle)
-      : Activity("RemoveStatsConfirmation", renderer, mappedInput), bookTitle(std::move(bookTitle)) {}
-
-  void onEnter() override {
-    Activity::onEnter();
-    waitForConfirmRelease =
-        mappedInput.isPressed(MappedInputManager::Button::Confirm) || mappedInput.isAnyMappedButtonPressed();
-    waitForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back) || mappedInput.isAnyMappedButtonPressed();
-    requestUpdate(true);
-  }
-
-  void loop() override {
-    if (waitForBackRelease) {
-      if (!mappedInput.isPressed(MappedInputManager::Button::Back) && !mappedInput.isAnyMappedButtonPressed()) {
-        waitForBackRelease = false;
-      }
-      return;
-    }
-    if (waitForConfirmRelease) {
-      if (!mappedInput.isPressed(MappedInputManager::Button::Confirm) && !mappedInput.isAnyMappedButtonPressed()) {
-        waitForConfirmRelease = false;
-      }
-      return;
-    }
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-      ActivityResult result;
-      result.isCancelled = true;
-      setResult(std::move(result));
-      finish();
-      return;
-    }
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      ActivityResult result;
-      result.isCancelled = false;
-      setResult(std::move(result));
-      finish();
-    }
-  }
-
-  void render(RenderLock&&) override {
-    renderer.clearScreen();
-    const auto& metrics = UITheme::getInstance().getMetrics();
-    const int pageWidth = renderer.getScreenWidth();
-    const int sidePadding = metrics.contentSidePadding;
-    int currentY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 18;
-
-    HeaderDateUtils::drawHeaderWithDate(renderer, tr(STR_READING_STATS));
-    renderer.drawCenteredText(UI_12_FONT_ID, currentY, tr(STR_REMOVE_FROM_READING_STATS), true, EpdFontFamily::BOLD);
-    currentY += renderer.getLineHeight(UI_12_FONT_ID) + 18;
-
-    const auto titleLines =
-        renderer.wrappedText(UI_10_FONT_ID, bookTitle.c_str(), pageWidth - sidePadding * 2, 2, EpdFontFamily::BOLD);
-    for (const auto& line : titleLines) {
-      renderer.drawCenteredText(UI_10_FONT_ID, currentY, line.c_str(), true, EpdFontFamily::BOLD);
-      currentY += renderer.getLineHeight(UI_10_FONT_ID);
-    }
-    currentY += 14;
-
-    const auto bodyLines =
-        renderer.wrappedText(UI_10_FONT_ID, tr(STR_REMOVE_STATS_ENTRY_BODY), pageWidth - sidePadding * 2, 4);
-    for (const auto& line : bodyLines) {
-      renderer.drawText(UI_10_FONT_ID, sidePadding, currentY, line.c_str());
-      currentY += renderer.getLineHeight(UI_10_FONT_ID) + 2;
-    }
-
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_REMOVE), "", "");
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    renderer.displayBuffer();
-  }
-};
 
 void drawMoreDetailsButton(GfxRenderer& renderer, const Rect& rect, const bool selected) {
   if (selected) {
@@ -474,7 +396,8 @@ void ReadingStatsActivity::confirmRemoveSelectedEntry() {
 
   const std::string path = books[bookIndex].path;
   const std::string title = getBookTitle(books[bookIndex]);
-  startActivityForResult(std::make_unique<RemoveStatsConfirmationActivity>(renderer, mappedInput, title),
+  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_FROM_READING_STATS),
+                                                                title + "\n" + tr(STR_REMOVE_STATS_ENTRY_BODY)),
                          [this, path](const ActivityResult& result) {
                            guardBackReturn();
                            confirmLongPressHandled = false;

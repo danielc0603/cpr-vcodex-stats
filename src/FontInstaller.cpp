@@ -70,6 +70,11 @@ bool FontInstaller::validateCpfontFile(const char* path) {
 }
 
 void FontInstaller::buildFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize) {
+  if (outBufSize == 0) return;
+  outBuf[0] = '\0';
+  if (!isValidFamilyName(family) || !isValidCpfontFilename(filename)) {
+    return;
+  }
   const char* root = SdCardFontRegistry::findFamilyRoot(family);
   if (!root) root = SdCardFontRegistry::defaultWriteRoot();
   snprintf(outBuf, outBufSize, "%s/%s/%s", root, family, filename);

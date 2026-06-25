@@ -82,11 +82,12 @@ class ActivityManager {
   void goToFileTransfer();
   void goToSettings();
   void goToApps();
+  void goToLibrary();
+  void goToLibraryReindex();
+  void goToLibraryCollection(uint8_t collection);
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
-  void goToBrowser();
   void goToReader(std::string path);
-  void goToKOReaderSync();
   void goToEpubBookmark(std::string path, int spineIndex, uint32_t page);
   void goToSleep();
   void goToBoot();

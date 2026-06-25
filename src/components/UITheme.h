@@ -27,7 +27,8 @@ class UITheme {
   static std::string resolveBookCoverThumbPath(const std::string& bookPath, const std::string& coverBmpPath,
                                                int preferredWidth = 0, int preferredHeight = 0);
   static std::string ensureBookCoverThumbPath(const std::string& bookPath, const std::string& coverBmpPath,
-                                              int preferredWidth, int preferredHeight);
+                                              int preferredWidth, int preferredHeight,
+                                              bool (*shouldCancel)(void*) = nullptr, void* cancelCtx = nullptr);
   static UIIcon getFileIcon(const std::string& filename);
   static int getStatusBarHeight();
   static int getProgressBarHeight();

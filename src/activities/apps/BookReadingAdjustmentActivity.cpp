@@ -6,23 +6,28 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <string>
+#include <variant>
 
 #include "AchievementsStore.h"
+#include "ReadingDateSelectionActivity.h"
 #include "ReadingStatsStore.h"
-#include "components/UITheme.h"
 #include "fontIds.h"
-#include "util/HeaderDateUtils.h"
+#include "activities/util/CompactHudRenderer.h"
 #include "util/ReadingStatsAnalytics.h"
 #include "util/TimeUtils.h"
 
 namespace {
-constexpr int FIELD_COUNT = 4;
+constexpr int FIELD_COUNT = 7;
 constexpr int OPERATION_COUNT = 2;
 constexpr int64_t MINUTES_TO_MS = 60LL * 1000LL;
 constexpr int DURATION_MINUTES[] = {5, 10, 15, 20, 30, 45, 60, 90, 120};
 constexpr int DURATION_COUNT = sizeof(DURATION_MINUTES) / sizeof(DURATION_MINUTES[0]);
-constexpr int APPLY_FIELD_INDEX = FIELD_COUNT - 1;
+constexpr int START_DATE_FIELD_INDEX = 3;
+constexpr int FINISH_DATE_FIELD_INDEX = 4;
+constexpr int APPLY_FIELD_INDEX = 5;
+constexpr int CANCEL_FIELD_INDEX = 6;
 
 int wrapIndex(const int value, const int delta, const int count) {
   int next = value + delta;
@@ -48,10 +53,6 @@ void BookReadingAdjustmentActivity::adjustSelectedValue(const int delta) {
   lastApplyFailed = false;
   if (selectedField == 0) {
     selectedOperation = wrapIndex(selectedOperation, delta, OPERATION_COUNT);
-  } else if (selectedField == 1) {
-    if (selectedDayOrdinal != 0) {
-      selectedDayOrdinal = static_cast<uint32_t>(static_cast<int32_t>(selectedDayOrdinal) + delta);
-    }
   } else if (selectedField == 2) {
     selectedDuration = wrapIndex(selectedDuration, delta, DURATION_COUNT);
   }
@@ -157,6 +158,62 @@ const char* BookReadingAdjustmentActivity::getDurationLabel() const {
   return label;
 }
 
+void BookReadingAdjustmentActivity::openAdjustmentDateEditor() {
+  startActivityForResult(std::make_unique<ReadingDateSelectionActivity>(renderer, mappedInput, selectedDayOrdinal),
+                         [this](const ActivityResult& result) {
+                           mappedInput.armPressedButtonsReleaseGuard();
+                           if (!result.isCancelled) {
+                             if (const auto* page = std::get_if<PageResult>(&result.data)) {
+                               selectedDayOrdinal = page->page;
+                               lastApplyFailed = false;
+                             }
+                           }
+                           requestUpdate();
+                         });
+}
+
+std::string BookReadingAdjustmentActivity::getBookDateLabel(const bool finishDate) const {
+  const auto* book = READING_STATS.findBook(bookPath);
+  if (book == nullptr) {
+    return tr(STR_BOOK_NOT_FOUND);
+  }
+  const uint32_t timestamp = finishDate ? book->completedAt : book->firstReadAt;
+  if (!TimeUtils::isClockValid(timestamp)) {
+    return tr(STR_NOT_SET);
+  }
+  return ReadingStatsAnalytics::formatDayOrdinalLabel(TimeUtils::getLocalDayOrdinal(timestamp));
+}
+
+void BookReadingAdjustmentActivity::openBookDateEditor(const bool finishDate) {
+  const auto* book = READING_STATS.findBook(bookPath);
+  if (book == nullptr) {
+    lastApplyFailed = true;
+    requestUpdate();
+    return;
+  }
+
+  const uint32_t fallbackTimestamp = book->lastReadAt != 0 ? book->lastReadAt : READING_STATS.getDisplayTimestamp();
+  const uint32_t targetTimestamp = finishDate ? book->completedAt : book->firstReadAt;
+  const uint32_t initialDay =
+      TimeUtils::isClockValid(targetTimestamp)
+          ? TimeUtils::getLocalDayOrdinal(targetTimestamp)
+          : (TimeUtils::isClockValid(fallbackTimestamp) ? TimeUtils::getLocalDayOrdinal(fallbackTimestamp) : 0);
+  startActivityForResult(std::make_unique<ReadingDateSelectionActivity>(renderer, mappedInput, initialDay, finishDate),
+                         [this, finishDate](const ActivityResult& result) {
+                           mappedInput.armPressedButtonsReleaseGuard();
+                           if (!result.isCancelled) {
+                             if (const auto* page = std::get_if<PageResult>(&result.data)) {
+                               if (finishDate) {
+                                 READING_STATS.setBookFinishDate(bookPath, page->page);
+                               } else {
+                                 READING_STATS.setBookStartDate(bookPath, page->page);
+                               }
+                             }
+                           }
+                           requestUpdate();
+                         });
+}
+
 bool BookReadingAdjustmentActivity::applyAdjustment() {
   const uint32_t dayOrdinal = selectedDayOrdinal;
   const int32_t deltaMs = getSelectedDeltaMs();
@@ -179,67 +236,85 @@ void BookReadingAdjustmentActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    if (selectedField >= APPLY_FIELD_INDEX) {
+    if (selectedField == 1) {
+      openAdjustmentDateEditor();
+    } else if (selectedField == START_DATE_FIELD_INDEX) {
+      openBookDateEditor(false);
+    } else if (selectedField == FINISH_DATE_FIELD_INDEX) {
+      openBookDateEditor(true);
+    } else if (selectedField == APPLY_FIELD_INDEX) {
       applyAdjustment();
+    } else if (selectedField == CANCEL_FIELD_INDEX) {
+      finish();
     } else {
-      selectedField = ButtonNavigator::nextIndex(selectedField, FIELD_COUNT);
       lastApplyFailed = false;
       requestUpdate();
     }
     return;
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up, MappedInputManager::Button::Left},
-                                       [this] { adjustSelectedValue(-1); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down, MappedInputManager::Button::Right},
-                                       [this] { adjustSelectedValue(1); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this] {
+    selectedField = ButtonNavigator::previousIndex(selectedField, FIELD_COUNT);
+    lastApplyFailed = false;
+    requestUpdate();
+  });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, [this] {
+    selectedField = ButtonNavigator::nextIndex(selectedField, FIELD_COUNT);
+    lastApplyFailed = false;
+    requestUpdate();
+  });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] { adjustSelectedValue(-1); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] { adjustSelectedValue(1); });
 }
 
 void BookReadingAdjustmentActivity::render(RenderLock&&) {
-  renderer.clearScreen();
-
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = renderer.getScreenWidth();
-  const int sidePadding = metrics.contentSidePadding;
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int listHeight = metrics.listWithSubtitleRowHeight * FIELD_COUNT;
   const std::string subtitle =
-      renderer.truncatedText(UI_10_FONT_ID, bookTitle.c_str(), pageWidth - metrics.contentSidePadding * 2);
+      renderer.truncatedText(UI_10_FONT_ID, bookTitle.c_str(), renderer.getScreenWidth() - 40);
+  std::vector<CompactHudRenderer::Row> rows;
+  rows.reserve(FIELD_COUNT);
+  for (int index = 0; index < FIELD_COUNT; ++index) {
+    std::string label;
+    std::string value;
+    if (index == 0) {
+      label = tr(STR_ACTION);
+      value = getOperationLabel();
+    } else if (index == 1) {
+      label = tr(STR_DATE);
+      value = getDateLabel();
+    } else if (index == 2) {
+      label = tr(STR_AMOUNT);
+      value = getDurationLabel();
+    } else if (index == START_DATE_FIELD_INDEX) {
+      label = tr(STR_START_DATE);
+      value = getBookDateLabel(false);
+    } else if (index == FINISH_DATE_FIELD_INDEX) {
+      label = tr(STR_FINISH_DATE);
+      value = getBookDateLabel(true);
+    } else if (index == APPLY_FIELD_INDEX) {
+      label = tr(STR_CONFIRM);
+      value = canApplySelectedAdjustment() ? "" : tr(STR_COULD_NOT_APPLY_CORRECTION);
+    } else {
+      label = tr(STR_CANCEL);
+      value = "";
+    }
+    rows.push_back(CompactHudRenderer::Row{label, value, false});
+  }
 
-  HeaderDateUtils::drawHeaderWithDate(renderer, tr(STR_ADJUST_READING_TIME), subtitle.c_str());
-
-  GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, listHeight}, FIELD_COUNT, selectedField,
-      [](int index) {
-        if (index == 0) return std::string(tr(STR_ACTION));
-        if (index == 1) return std::string(tr(STR_DATE));
-        if (index == 2) return std::string(tr(STR_AMOUNT));
-        return std::string(tr(STR_CONFIRM));
-      },
-      [this](int index) {
-        if (index == 0) return std::string(getOperationLabel());
-        if (index == 1) return getDateLabel();
-        if (index == 2) return std::string(getDurationLabel());
-        return canApplySelectedAdjustment() ? std::string(tr(STR_SELECT_APPLIES_CORRECTION))
-                                            : std::string(tr(STR_COULD_NOT_APPLY_CORRECTION));
-      },
-      [](int index) { return index == 0 ? UIIcon::Settings : UIIcon::Recent; }, nullptr, false);
-
-  const int infoTop = contentTop + listHeight + metrics.verticalSpacing;
-  const int infoWidth = pageWidth - sidePadding * 2;
   std::string info = getAdjustmentPreviewInfo();
-  std::string hint = selectedField == APPLY_FIELD_INDEX ? tr(STR_SELECT_APPLIES_CORRECTION) : tr(STR_SELECT);
+  std::string hint;
   if (lastApplyFailed) {
     hint = tr(STR_COULD_NOT_APPLY_CORRECTION);
   } else if (!canApplySelectedAdjustment()) {
     hint = tr(STR_CHOOSE_ADD_OR_REDUCE_AMOUNT);
   }
-  const std::string shortInfo = renderer.truncatedText(UI_10_FONT_ID, info.c_str(), infoWidth);
-  renderer.drawText(UI_10_FONT_ID, sidePadding, infoTop, shortInfo.c_str());
-  const std::string shortHint = renderer.truncatedText(UI_10_FONT_ID, hint.c_str(), infoWidth);
-  renderer.drawText(UI_10_FONT_ID, sidePadding, infoTop + renderer.getLineHeight(UI_10_FONT_ID), shortHint.c_str());
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer();
+  CompactHudRenderer::ActionListConfig config;
+  config.title = tr(STR_ADJUST_READING_TIME);
+  config.context = hint.empty() ? std::vector<std::string>{subtitle, info}
+                                : std::vector<std::string>{subtitle, info, hint};
+  config.rows = std::move(rows);
+  config.selectedIndex = selectedField;
+  config.minWidth = 330;
+  config.maxRows = FIELD_COUNT;
+  config.drawHints = false;
+  CompactHudRenderer::drawActionList(renderer, mappedInput, config);
 }

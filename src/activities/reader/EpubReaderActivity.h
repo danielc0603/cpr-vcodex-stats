@@ -45,6 +45,8 @@ class EpubReaderActivity final : public Activity {
   bool confirmHoldPreviewVisible = false;
   bool turnButtonLongPressHandled = false;
   bool fixedOrientationToggleActive = false;
+  bool recentsEntryRemovedAfterFinished = false;
+  bool reopenReaderMenuAfterQuickSettings = false;
   uint8_t fixedOrientationPrevious = CrossPointSettings::PORTRAIT;
   uint8_t activeReaderOrientation = CrossPointSettings::PORTRAIT;
   unsigned long firstConfirmClickMs = 0UL;
@@ -72,6 +74,7 @@ class EpubReaderActivity final : public Activity {
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
+  void openReaderMenuHud();
   void openReaderNavigationMenu();
   void openJumpMenu();
   void openRecentBooksSwitcher();
@@ -109,12 +112,8 @@ class EpubReaderActivity final : public Activity {
   void navigateToHref(const std::string& href, bool savePosition = false);
   void restoreSavedPosition();
 
-  // KOReader sync — standalone activity launch and result application
-  enum class SyncLaunchMode { COMPARE, PULL_REMOTE, PUSH_LOCAL };
   bool pendingParagraphLookup = false;
   uint16_t pendingParagraphIndex = 0;
-  void launchKOReaderSync(SyncLaunchMode mode);
-  void applyPendingSyncSession();
 
  public:
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Epub> epub,

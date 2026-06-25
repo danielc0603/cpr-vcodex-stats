@@ -9,7 +9,8 @@
 #include "components/themes/BaseTheme.h"
 
 enum class ShortcutId {
-  BrowseFiles = 0,
+  Library = 0,
+  BrowseFiles,
   Stats,
   SyncDay,
   Settings,
@@ -23,7 +24,6 @@ enum class ShortcutId {
   Favorites,
   FileTransfer,
   Sleep,
-  OpdsBrowser,
 };
 
 struct ShortcutDefinition {
@@ -38,6 +38,9 @@ struct ShortcutDefinition {
 
 inline const std::array<ShortcutDefinition, 15>& getShortcutDefinitions() {
   static const std::array<ShortcutDefinition, 15> definitions = {
+      ShortcutDefinition{ShortcutId::Library, StrId::STR_LIBRARY, StrId::STR_NONE_OPT, UIIcon::Library,
+                         &CrossPointSettings::libraryShortcut, &CrossPointSettings::libraryShortcutOrder,
+                         &CrossPointSettings::libraryShortcutVisible},
       ShortcutDefinition{ShortcutId::BrowseFiles, StrId::STR_BROWSE_FILES, StrId::STR_NONE_OPT, UIIcon::Folder,
                          &CrossPointSettings::browseFilesShortcut, &CrossPointSettings::browseFilesShortcutOrder,
                          &CrossPointSettings::browseFilesShortcutVisible},
@@ -82,9 +85,6 @@ inline const std::array<ShortcutDefinition, 15>& getShortcutDefinitions() {
       ShortcutDefinition{ShortcutId::Sleep, StrId::STR_SLEEP, StrId::STR_SLEEP_APP_DESC, UIIcon::Folder,
                          &CrossPointSettings::sleepShortcut, &CrossPointSettings::sleepShortcutOrder,
                          &CrossPointSettings::sleepShortcutVisible},
-      ShortcutDefinition{ShortcutId::OpdsBrowser, StrId::STR_OPDS_BROWSER, StrId::STR_NONE_OPT, UIIcon::Library,
-                         &CrossPointSettings::opdsBrowserShortcut, &CrossPointSettings::opdsBrowserShortcutOrder,
-                         &CrossPointSettings::opdsBrowserShortcutVisible},
   };
 
   return definitions;

@@ -63,6 +63,21 @@ void Txt::setupCacheDir() const {
   }
 }
 
+bool Txt::clearCache() const {
+  if (!Storage.exists(cachePath.c_str())) {
+    LOG_DBG("TXT", "Cache does not exist, no action needed");
+    return true;
+  }
+
+  if (!Storage.removeDir(cachePath.c_str())) {
+    LOG_ERR("TXT", "Failed to clear cache");
+    return false;
+  }
+
+  LOG_DBG("TXT", "Cache cleared successfully");
+  return true;
+}
+
 std::string Txt::findCoverImage() const {
   // Get the folder containing the txt file
   size_t lastSlash = filepath.find_last_of('/');

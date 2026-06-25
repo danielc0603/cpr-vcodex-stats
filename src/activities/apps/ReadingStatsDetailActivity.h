@@ -4,14 +4,12 @@
 #include <string>
 
 #include "../Activity.h"
-#include "util/ButtonNavigator.h"
 
 struct ReadingStatsDetailContext {
   bool showSessionSummary = false;
 };
 
 class ReadingStatsDetailActivity final : public Activity {
-  ButtonNavigator buttonNavigator;
   std::string bookPath;
   std::string resolvedCoverBmpPath;
   ReadingStatsDetailContext context;

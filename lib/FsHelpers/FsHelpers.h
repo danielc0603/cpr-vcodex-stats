@@ -1,10 +1,14 @@
 #pragma once
+#ifdef ARDUINO
 #include <WString.h>
+#endif
 
 #include <string>
 #include <string_view>
 
 namespace FsHelpers {
+
+std::string decodeUriEscapes(const std::string& path);
 
 std::string normalisePath(const std::string& path);
 
@@ -12,45 +16,57 @@ std::string normalisePath(const std::string& path);
  * Check if the given filename ends with the specified extension (case-insensitive).
  */
 bool checkFileExtension(std::string_view fileName, const char* extension);
+#ifdef ARDUINO
 inline bool checkFileExtension(const String& fileName, const char* extension) {
   return checkFileExtension(std::string_view{fileName.c_str(), fileName.length()}, extension);
 }
+#endif
 
 // Check for either .jpg or .jpeg extension (case-insensitive)
 bool hasJpgExtension(std::string_view fileName);
+#ifdef ARDUINO
 inline bool hasJpgExtension(const String& fileName) {
   return hasJpgExtension(std::string_view{fileName.c_str(), fileName.length()});
 }
+#endif
 
 // Check for .png extension (case-insensitive)
 bool hasPngExtension(std::string_view fileName);
+#ifdef ARDUINO
 inline bool hasPngExtension(const String& fileName) {
   return hasPngExtension(std::string_view{fileName.c_str(), fileName.length()});
 }
+#endif
 
 // Check for .bmp extension (case-insensitive)
 bool hasBmpExtension(std::string_view fileName);
 
 // Check for .gif extension (case-insensitive)
 bool hasGifExtension(std::string_view fileName);
+#ifdef ARDUINO
 inline bool hasGifExtension(const String& fileName) {
   return hasGifExtension(std::string_view{fileName.c_str(), fileName.length()});
 }
+#endif
 
 // Check for .epub extension (case-insensitive)
 bool hasEpubExtension(std::string_view fileName);
+#ifdef ARDUINO
 inline bool hasEpubExtension(const String& fileName) {
   return hasEpubExtension(std::string_view{fileName.c_str(), fileName.length()});
 }
+#endif
 
 // Check for either .xtc or .xtch extension (case-insensitive)
 bool hasXtcExtension(std::string_view fileName);
 
 // Check for .txt extension (case-insensitive)
 bool hasTxtExtension(std::string_view fileName);
+#ifdef ARDUINO
 inline bool hasTxtExtension(const String& fileName) {
   return hasTxtExtension(std::string_view{fileName.c_str(), fileName.length()});
 }
+#endif
 
 // Check for .md or .markdown extension (case-insensitive)
 bool hasMarkdownExtension(std::string_view fileName);

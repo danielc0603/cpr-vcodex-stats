@@ -56,10 +56,8 @@ std::string shortenCrashValue(const std::string& value, const size_t maxChars) {
 }
 
 std::string layoutNameForCrash(const std::string& value) {
-  if (value == "0") return "2x2";
-  if (value == "1") return "2x3";
-  if (value == "2") return "3x3";
-  if (value == "3") return "3x4";
+  if (value == "0") return "3x3";
+  if (value == "1" || value == "2" || value == "3") return "stale -> 3x3";
   return value;
 }
 

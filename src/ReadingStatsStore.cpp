@@ -7,6 +7,8 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <ctime>
 
 #include "CrossPointState.h"
@@ -15,7 +17,7 @@
 
 namespace {
 constexpr char READING_STATS_FILE_JSON[] = "/.crosspoint/reading_stats.json";
-constexpr unsigned long MAX_READING_GAP_MS = 30UL * 60UL * 1000UL;
+constexpr char READING_STATS_BACKUP_DIR[] = "/.cpr-vcodex-stats-backup";
 constexpr unsigned long SESSION_HEARTBEAT_MS = 60UL * 1000UL;
 constexpr unsigned long DEFERRED_SAVE_INTERVAL_MS = 30UL * 1000UL;
 constexpr uint64_t MIN_SESSION_READING_MS = 3ULL * 60ULL * 1000ULL;
@@ -25,6 +27,7 @@ constexpr size_t MAX_SESSION_LOG_ENTRIES = 256;
 constexpr size_t MAX_BOOK_PROGRESS_SAMPLES = 32;
 constexpr size_t MAX_BOOK_ESTIMATE_SAMPLES = 8;
 constexpr uint8_t COMPLETED_BOOK_CORRECTION_THRESHOLD_PERCENT = 98;
+uint32_t lastAutomaticBackupDayOrdinal = 0;
 
 uint8_t clampPercent(const uint8_t percent) { return std::min<uint8_t>(percent, 100); }
 
@@ -663,6 +666,20 @@ bool ReadingStatsStore::persistToFile(const char* path) const {
   if (saved) {
     dirty = false;
     lastSaveMs = millis();
+    if (std::strcmp(path, READING_STATS_FILE_JSON) == 0) {
+      const uint32_t referenceTimestamp = getReferenceTimestamp(TimeUtils::getAuthoritativeTimestamp());
+      if (isClockValid(referenceTimestamp)) {
+        const uint32_t dayOrdinal = TimeUtils::getLocalDayOrdinal(referenceTimestamp);
+        if (dayOrdinal != 0 && dayOrdinal != lastAutomaticBackupDayOrdinal) {
+          Storage.mkdir(READING_STATS_BACKUP_DIR);
+          const std::string backupPath =
+              std::string(READING_STATS_BACKUP_DIR) + "/reading_stats_" + std::to_string(dayOrdinal) + ".json";
+          if (JsonSettingsIO::saveReadingStats(*this, backupPath.c_str())) {
+            lastAutomaticBackupDayOrdinal = dayOrdinal;
+          }
+        }
+      }
+    }
   }
   return saved;
 }
@@ -792,7 +809,8 @@ void ReadingStatsStore::noteActivity() {
 
   const unsigned long nowMs = millis();
   const unsigned long elapsedMs = nowMs - activeSession.lastInteractionMs;
-  const unsigned long creditedMs = std::min(elapsedMs, MAX_READING_GAP_MS);
+  const unsigned long idleThresholdMs = static_cast<unsigned long>(SETTINGS.getIdleTimeThresholdMs());
+  const unsigned long creditedMs = elapsedMs > idleThresholdMs ? 0 : elapsedMs;
 
   if (creditedMs > 0) {
     auto& book = books[activeSession.bookIndex];
@@ -971,6 +989,145 @@ bool ReadingStatsStore::removeBook(const std::string& path) {
   return true;
 }
 
+bool ReadingStatsStore::repairRenamedBooks(const std::vector<std::string>& livePaths) {
+  if (livePaths.empty() || books.empty()) {
+    return false;
+  }
+
+  struct LiveBook {
+    std::string path;
+    std::string bookId;
+    std::string fallbackKey;
+  };
+  auto normalizedFallbackKey = [](const std::string& path, const std::string& title, const std::string& author) {
+    auto normalize = [](std::string value) {
+      std::transform(value.begin(), value.end(), value.begin(),
+                     [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+      std::string token;
+      std::vector<std::string> tokens;
+      for (const char ch : value) {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (std::isalnum(uch)) {
+          token.push_back(ch);
+        } else if (!token.empty()) {
+          tokens.push_back(token);
+          token.clear();
+        }
+      }
+      if (!token.empty()) tokens.push_back(token);
+      if (tokens.size() == 2) {
+        std::sort(tokens.begin(), tokens.end());
+      }
+      value.clear();
+      for (const auto& part : tokens) {
+        value += part;
+      }
+      return value;
+    };
+    std::string resolvedTitle = title;
+    if (resolvedTitle.empty()) {
+      resolvedTitle = path;
+      const size_t slash = resolvedTitle.find_last_of('/');
+      if (slash != std::string::npos) resolvedTitle = resolvedTitle.substr(slash + 1);
+      const size_t dot = resolvedTitle.find_last_of('.');
+      if (dot != std::string::npos) resolvedTitle = resolvedTitle.substr(0, dot);
+    }
+    std::string resolvedAuthor = author;
+    if (resolvedAuthor.empty()) {
+      const size_t slash = path.find_last_of('/');
+      if (slash != std::string::npos && slash > 0) {
+        const size_t parentEnd = slash - 1;
+        const size_t parentStart = path.find_last_of('/', parentEnd);
+        const size_t start = parentStart == std::string::npos ? 0 : parentStart + 1;
+        resolvedAuthor = path.substr(start, parentEnd - start + 1);
+      }
+    }
+    if (!resolvedAuthor.empty()) {
+      const std::string suffix = " - " + resolvedAuthor;
+      if (resolvedTitle.size() > suffix.size() &&
+          resolvedTitle.compare(resolvedTitle.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        resolvedTitle.resize(resolvedTitle.size() - suffix.size());
+      }
+    }
+    return normalize(resolvedAuthor) + "|" + normalize(resolvedTitle);
+  };
+
+  std::vector<LiveBook> liveBooks;
+  liveBooks.reserve(livePaths.size());
+  for (const auto& path : livePaths) {
+    const std::string normalizedPath = BookIdentity::normalizePath(path);
+    if (normalizedPath.empty() || !Storage.exists(normalizedPath.c_str())) {
+      continue;
+    }
+    liveBooks.push_back(
+        LiveBook{normalizedPath, BookIdentity::resolveStableBookId(normalizedPath),
+                 normalizedFallbackKey(normalizedPath, "", "")});
+  }
+  if (liveBooks.empty()) {
+    return false;
+  }
+
+  bool changed = false;
+  for (auto& book : books) {
+    if (!book.path.empty() && Storage.exists(book.path.c_str())) {
+      continue;
+    }
+    const std::string fallbackKey = normalizedFallbackKey(book.path, book.title, book.author);
+    for (const auto& live : liveBooks) {
+      const bool sameId = !book.bookId.empty() && !BookIdentity::isLegacyBookId(book.bookId) &&
+                          !live.bookId.empty() && book.bookId == live.bookId;
+      const bool sameFallback = !fallbackKey.empty() && fallbackKey == live.fallbackKey;
+      if (!sameId && !sameFallback) {
+        continue;
+      }
+      rememberBookPath(book, live.path);
+      if (!live.bookId.empty() && (book.bookId.empty() || BookIdentity::isLegacyBookId(book.bookId))) {
+        book.bookId = live.bookId;
+      }
+      changed = true;
+      break;
+    }
+  }
+
+  for (size_t primaryIndex = 0; primaryIndex < books.size(); ++primaryIndex) {
+    const std::string primaryKey =
+        normalizedFallbackKey(books[primaryIndex].path, books[primaryIndex].title, books[primaryIndex].author);
+    if (primaryKey.empty()) continue;
+    size_t duplicateIndex = primaryIndex + 1;
+    while (duplicateIndex < books.size()) {
+      const std::string duplicateKey =
+          normalizedFallbackKey(books[duplicateIndex].path, books[duplicateIndex].title, books[duplicateIndex].author);
+      if (primaryKey == duplicateKey) {
+        const bool primaryExists = !books[primaryIndex].path.empty() && Storage.exists(books[primaryIndex].path.c_str());
+        const bool duplicateExists =
+            !books[duplicateIndex].path.empty() && Storage.exists(books[duplicateIndex].path.c_str());
+        if (!primaryExists && duplicateExists) {
+          mergeBookInto(books[duplicateIndex], books[primaryIndex]);
+          books.erase(books.begin() + static_cast<std::ptrdiff_t>(primaryIndex));
+          changed = true;
+          if (primaryIndex > 0) --primaryIndex;
+          break;
+        }
+        if (primaryExists || duplicateExists) {
+          mergeBookInto(books[primaryIndex], books[duplicateIndex]);
+          books.erase(books.begin() + static_cast<std::ptrdiff_t>(duplicateIndex));
+          changed = true;
+          continue;
+        }
+      }
+      ++duplicateIndex;
+    }
+  }
+
+  if (changed) {
+    normalizeBooks();
+    rebuildAggregatedReadingDays();
+    markDirty();
+    saveToFile();
+  }
+  return changed;
+}
+
 void ReadingStatsStore::endSession() {
   if (!activeSession.active || activeSession.bookIndex >= books.size()) {
     lastSessionSnapshot = {};
@@ -1061,6 +1218,46 @@ bool ReadingStatsStore::adjustBookReadingTime(const std::string& path, const uin
 
   rebuildAggregatedReadingDays();
   markDirty();
+  return saveToFile();
+}
+
+bool ReadingStatsStore::setBookStartDate(const std::string& path, const uint32_t dayOrdinal) {
+  if (dayOrdinal == 0) {
+    return false;
+  }
+
+  const size_t index = findBookIndexByPath(path);
+  if (index >= books.size()) {
+    return false;
+  }
+
+  books[index].firstReadAt = dayOrdinal * 86400UL + 43200UL;
+  markDirty();
+  invalidateSummaryCache();
+  return saveToFile();
+}
+
+bool ReadingStatsStore::setBookFinishDate(const std::string& path, const uint32_t dayOrdinal) {
+  const size_t index = findBookIndexByPath(path);
+  if (index >= books.size()) {
+    return false;
+  }
+
+  auto& book = books[index];
+  if (dayOrdinal == 0) {
+    book.completedAt = 0;
+    markDirty();
+    invalidateSummaryCache();
+    return saveToFile();
+  }
+
+  book.completedAt = dayOrdinal * 86400UL + 43200UL;
+  book.completed = true;
+  if (book.lastProgressPercent < 99) {
+    book.lastProgressPercent = 100;
+  }
+  markDirty();
+  invalidateSummaryCache();
   return saveToFile();
 }
 
@@ -1157,6 +1354,8 @@ void ReadingStatsStore::reset() {
   markDirty();
   saveToFile();
 }
+
+void ReadingStatsStore::resetAllTimeStats() { reset(); }
 
 bool ReadingStatsStore::exportToFile(const std::string& path) const {
   if (path.empty()) {

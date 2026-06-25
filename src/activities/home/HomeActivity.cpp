@@ -19,8 +19,8 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
-#include "OpdsServerStore.h"
 #include "BookMetadataStore.h"
+#include "LibraryMetadataStore.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "activities/apps/AchievementsActivity.h"
@@ -69,16 +69,116 @@ std::string fallbackTitleFromPath(const std::string& path) {
   return filename;
 }
 
+bool existingPathFromCandidates(const std::string& primary, const std::vector<std::string>& knownPaths,
+                                std::string& outPath) {
+  if (!primary.empty() && Storage.exists(primary.c_str())) {
+    outPath = primary;
+    return true;
+  }
+  for (const auto& path : knownPaths) {
+    if (!path.empty() && Storage.exists(path.c_str())) {
+      outPath = path;
+      return true;
+    }
+  }
+  return false;
+}
+
+void applyLibraryMetadataToRecent(RecentBook& book, const LibraryBookMetadata& metadata) {
+  if (book.bookId.empty()) {
+    book.bookId = !metadata.bookId.empty() ? metadata.bookId : metadata.stableId;
+  }
+  if (book.title.empty()) {
+    book.title = metadata.title;
+  }
+  if (book.author.empty()) {
+    book.author = metadata.author;
+  }
+  if (book.coverBmpPath.empty()) {
+    book.coverBmpPath = metadata.coverPath;
+  }
+}
+
+bool resolveRecentBookPath(RecentBook& book) {
+  if (!book.path.empty() && Storage.exists(book.path.c_str())) {
+    return true;
+  }
+
+  if (const auto* metadata = LIBRARY_METADATA.findBook(!book.bookId.empty() ? book.bookId : book.path)) {
+    applyLibraryMetadataToRecent(book, *metadata);
+    std::string repairedPath;
+    if (existingPathFromCandidates(metadata->path, metadata->knownPaths, repairedPath)) {
+      book.path = repairedPath;
+      return true;
+    }
+  }
+  return false;
+}
+
+RecentBook recentFromReadingStatsBook(const ReadingBookStats& statsBook, const std::string& path) {
+  RecentBook book;
+  book.bookId = statsBook.bookId;
+  book.path = path;
+  book.title = statsBook.title;
+  book.author = statsBook.author;
+  book.coverBmpPath = statsBook.coverBmpPath;
+  return book;
+}
+
+bool resolveCurrentBookForHome(RecentBook& outBook) {
+  if (!APP_STATE.openEpubPath.empty()) {
+    RecentBook current;
+    current.path = APP_STATE.openEpubPath;
+    if (const auto* statsBook = READING_STATS.findMatchingBookForPath(APP_STATE.openEpubPath)) {
+      current = recentFromReadingStatsBook(*statsBook, APP_STATE.openEpubPath);
+    }
+    if (resolveRecentBookPath(current)) {
+      outBook = current;
+      return true;
+    }
+  }
+
+  const auto& statsBooks = READING_STATS.getBooks();
+  const ReadingBookStats* latestStatsBook = nullptr;
+  for (const auto& statsBook : statsBooks) {
+    if (latestStatsBook == nullptr || statsBook.lastReadAt > latestStatsBook->lastReadAt) {
+      latestStatsBook = &statsBook;
+    }
+  }
+  if (latestStatsBook != nullptr) {
+    std::string resolvedPath;
+    if (existingPathFromCandidates(latestStatsBook->path, latestStatsBook->knownPaths, resolvedPath)) {
+      outBook = recentFromReadingStatsBook(*latestStatsBook, resolvedPath);
+      return true;
+    }
+    if (!latestStatsBook->bookId.empty()) {
+      RecentBook current = recentFromReadingStatsBook(*latestStatsBook, latestStatsBook->path);
+      current.bookId = latestStatsBook->bookId;
+      if (resolveRecentBookPath(current)) {
+        outBook = current;
+        return true;
+      }
+    }
+  }
+
+  const auto& recent = RECENT_BOOKS.getBooks();
+  for (const auto& book : recent) {
+    RecentBook current = book;
+    if (resolveRecentBookPath(current)) {
+      outBook = current;
+      return true;
+    }
+  }
+  return false;
+}
+
 UIIcon getHomeShortcutIcon(const HomeShortcutEntry& entry);
 
-std::vector<HomeShortcutEntry> getHomeShortcutEntries(const bool hasOpdsServers) {
+std::vector<HomeShortcutEntry> getHomeShortcutEntries() {
   std::vector<HomeShortcutEntry> entries;
   entries.push_back(HomeShortcutEntry{nullptr, true, tr(STR_APPS), "", UIIcon::Apps, false});
 
   for (const auto& definition : getShortcutDefinitions()) {
-    if (definition.id == ShortcutId::OpdsBrowser && !hasOpdsServers) {
-      continue;
-    }
     const auto location = static_cast<CrossPointSettings::SHORTCUT_LOCATION>(SETTINGS.*(definition.locationPtr));
     if (location == CrossPointSettings::SHORTCUT_HOME && getShortcutVisibility(definition)) {
       entries.push_back(HomeShortcutEntry{&definition,
@@ -174,16 +274,19 @@ void HomeActivity::loadRecentBooks(const int maxBooks) {
   recentBooks.reserve(std::min(static_cast<int>(books.size()), maxBooks));
   bool repairedDisplayMetadata = false;
   const bool prioritizeCurrentBook =
-      SETTINGS.uiTheme == CrossPointSettings::LYRA_VCODEX2 && SETTINGS.showCurrentBookCard != 0 &&
-      !APP_STATE.openEpubPath.empty();
+      SETTINGS.uiTheme == CrossPointSettings::LYRA_VCODEX2 && SETTINGS.showCurrentBookCard != 0;
 
   auto appendResolvedBook =
       [this, maxBooks, preferredCoverWidth, preferredCoverHeight, &repairedDisplayMetadata](const RecentBook& book) {
-    if (static_cast<int>(recentBooks.size()) >= maxBooks || !Storage.exists(book.path.c_str())) {
+    if (static_cast<int>(recentBooks.size()) >= maxBooks) {
       return;
     }
     RecentBook resolvedBook = book;
-    const auto* statsBook = READING_STATS.findMatchingBookForPath(book.path, book.title, book.author);
+    if (!resolveRecentBookPath(resolvedBook)) {
+      return;
+    }
+    const auto* statsBook = READING_STATS.findMatchingBookForPath(resolvedBook.path, resolvedBook.title,
+                                                                  resolvedBook.author);
     if (resolvedBook.title.empty() && statsBook != nullptr && !statsBook->title.empty()) {
       resolvedBook.title = statsBook->title;
       repairedDisplayMetadata = true;
@@ -221,8 +324,12 @@ void HomeActivity::loadRecentBooks(const int maxBooks) {
   };
 
   if (prioritizeCurrentBook) {
+    RecentBook currentBook;
+    if (resolveCurrentBookForHome(currentBook)) {
+      appendResolvedBook(currentBook);
+    }
     for (const RecentBook& book : books) {
-      if (book.path == APP_STATE.openEpubPath) {
+      if (book.path == APP_STATE.openEpubPath && recentBooks.empty()) {
         appendResolvedBook(book);
         break;
       }
@@ -233,7 +340,9 @@ void HomeActivity::loadRecentBooks(const int maxBooks) {
     if (static_cast<int>(recentBooks.size()) >= maxBooks) {
       break;
     }
-    if (prioritizeCurrentBook && book.path == APP_STATE.openEpubPath) {
+    if (prioritizeCurrentBook && !recentBooks.empty() &&
+        (book.path == recentBooks.front().path ||
+         (!book.bookId.empty() && !recentBooks.front().bookId.empty() && book.bookId == recentBooks.front().bookId))) {
       continue;
     }
     appendResolvedBook(book);
@@ -257,8 +366,6 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
 
 void HomeActivity::onEnter() {
   Activity::onEnter();
-
-  hasOpdsServers = OPDS_STORE.hasServers();
 
   firstRenderDone = false;
   recentsLoading = false;
@@ -484,8 +591,11 @@ void HomeActivity::loop() {
       onAppsOpen();
     } else if (selectedEntry.definition) {
       switch (selectedEntry.definition->id) {
+        case ShortcutId::Library:
+          activityManager.goToLibrary();
+          break;
         case ShortcutId::BrowseFiles:
-          onFileBrowserOpen();
+          activityManager.goToFileBrowser();
           break;
         case ShortcutId::Stats:
         case ShortcutId::ReadingStats:
@@ -531,9 +641,6 @@ void HomeActivity::loop() {
           startActivityForResult(std::make_unique<SleepAppActivity>(renderer, mappedInput),
                                  [this](const ActivityResult&) { requestUpdate(); });
           break;
-        case ShortcutId::OpdsBrowser:
-          onOpdsBrowserOpen();
-          break;
       }
     }
   }
@@ -571,7 +678,7 @@ void HomeActivity::requestRemoveRecentBook(const int recentIndex) {
       });
 }
 
-void HomeActivity::rebuildHomeShortcutEntries() { homeShortcutEntries = getHomeShortcutEntries(hasOpdsServers); }
+void HomeActivity::rebuildHomeShortcutEntries() { homeShortcutEntries = getHomeShortcutEntries(); }
 
 void HomeActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -675,7 +782,7 @@ void HomeActivity::onSelectBook(const std::string& path) {
   activityManager.goToReader(path);
 }
 
-void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
+void HomeActivity::onFileBrowserOpen() { activityManager.goToLibrary(); }
 
 void HomeActivity::onAppsOpen() { activityManager.goToApps(); }
 
@@ -686,5 +793,3 @@ void HomeActivity::onReadingStatsOpen() {
 void HomeActivity::onSyncDayOpen() {
   activityManager.replaceActivity(std::make_unique<SyncDayActivity>(renderer, mappedInput));
 }
-
-void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }

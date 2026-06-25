@@ -109,6 +109,7 @@
     .action-buttons {
       display: flex;
       gap: 10px;
+      flex-wrap: wrap;
     }
     .action-btn {
       color: white;
@@ -139,6 +140,12 @@
     }
     .delete-action-btn:hover {
       background-color: #c0392b;
+    }
+    .download-action-btn {
+      background-color: #3498db;
+    }
+    .download-action-btn:hover {
+      background-color: #2d83bd;
     }
     /* Upload modal */
     .modal-overlay {
@@ -1486,6 +1493,10 @@
     <button class="action-btn upload-action-btn" onclick="openUploadModal()">📤 Upload</button>
     <button class="action-btn folder-action-btn" onclick="openFolderModal()">📁 New Folder</button>
     <button class="action-btn delete-action-btn" onclick="openDeleteSelectedModal()">🗑️ Delete Selected</button>
+    <button class="action-btn download-action-btn" onclick="downloadDeviceFile('/.cpr-vcodex-stats-backup/reading_stats_backup.json')">⬇️ Reading Stats</button>
+    <button class="action-btn download-action-btn" onclick="downloadDeviceFile('/.crosspoint/settings.json')">⬇️ Settings</button>
+    <button class="action-btn download-action-btn" onclick="downloadDeviceFile('/.crosspoint/library_metadata.json')">⬇️ Library Metadata</button>
+    <button class="action-btn download-action-btn" onclick="downloadDeviceFile('/.crosspoint/manual_library.json')">⬇️ Manual Library</button>
   </div>
 </div>
 
@@ -1773,6 +1784,10 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+  }
+
+  function downloadDeviceFile(path) {
+    window.location.href = '/download?path=' + encodeURIComponent(path);
   }
 
   function showNotification(message, type = 'info') {

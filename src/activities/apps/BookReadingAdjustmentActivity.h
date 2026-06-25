@@ -24,7 +24,10 @@ class BookReadingAdjustmentActivity final : public Activity {
   std::string getAdjustmentPreviewInfo() const;
   const char* getOperationLabel() const;
   std::string getDateLabel() const;
+  std::string getBookDateLabel(bool finishDate) const;
   const char* getDurationLabel() const;
+  void openAdjustmentDateEditor();
+  void openBookDateEditor(bool finishDate);
   bool applyAdjustment();
 
  public:

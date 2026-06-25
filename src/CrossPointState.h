@@ -1,41 +1,12 @@
 #pragma once
-#include <cstdint>
 #include <string>
-
-enum class KOReaderSyncIntentState : uint8_t { COMPARE = 0, PULL_REMOTE = 1, PUSH_LOCAL = 2 };
-
-enum class KOReaderSyncOutcomeState : uint8_t {
-  NONE = 0,
-  PENDING = 1,
-  CANCELLED = 2,
-  FAILED = 3,
-  UPLOAD_COMPLETE = 4,
-  APPLIED_REMOTE = 5,
-};
+#include <cstdint>
 
 struct PendingBookmarkJumpState {
   bool active = false;
   std::string bookPath;
   uint16_t spineIndex = 0;
   uint16_t pageNumber = 0;
-  void clear();
-};
-
-struct KOReaderSyncSessionState {
-  bool active = false;
-  std::string epubPath;
-  int spineIndex = 0;
-  int page = 0;
-  int totalPagesInSpine = 0;
-  uint16_t paragraphIndex = 0;
-  bool hasParagraphIndex = false;
-  uint32_t xhtmlSeekHint = 0;
-  KOReaderSyncIntentState intent = KOReaderSyncIntentState::COMPARE;
-  KOReaderSyncOutcomeState outcome = KOReaderSyncOutcomeState::NONE;
-  int resultSpineIndex = 0;
-  int resultPage = 0;
-  uint16_t resultParagraphIndex = 0;
-  bool resultHasParagraphIndex = false;
   void clear();
 };
 
@@ -55,7 +26,6 @@ class CrossPointState {
   uint32_t lastKnownValidTimestamp = 0;
   uint8_t syncDayReminderStartCount = 0;
   bool syncDayReminderLatched = false;
-  KOReaderSyncSessionState koReaderSyncSession;
   PendingBookmarkJumpState pendingBookmarkJump;
   ~CrossPointState() = default;
 

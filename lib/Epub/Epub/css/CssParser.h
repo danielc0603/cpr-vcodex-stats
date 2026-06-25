@@ -3,6 +3,7 @@
 #include <HalStorage.h>
 
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -110,9 +111,9 @@ class CssParser {
   std::string cachePath;
 
   // Internal parsing helpers
-  void processRuleBlockWithStyle(const std::string& selectorGroup, const CssStyle& style);
-  static CssStyle parseDeclarations(const std::string& declBlock);
-  static void parseDeclarationIntoStyle(const std::string& decl, CssStyle& style, std::string& propNameBuf,
+  void processRuleBlockWithStyle(std::string_view selectorGroup, const CssStyle& style);
+  static CssStyle parseDeclarations(std::string_view declBlock);
+  static void parseDeclarationIntoStyle(std::string_view decl, CssStyle& style, std::string& propNameBuf,
                                         std::string& propValueBuf);
 
   // Individual property value parsers
@@ -125,8 +126,8 @@ class CssParser {
   static bool tryInterpretLength(const std::string& val, CssLength& out);
 
   // String utilities
-  static std::string normalized(const std::string& s);
-  static void normalizedInto(const std::string& s, std::string& out);
+  static std::string normalized(std::string_view s);
+  static void normalizedInto(std::string_view s, std::string& out);
   static std::vector<std::string> splitOnChar(const std::string& s, char delimiter);
   static std::vector<std::string> splitWhitespace(const std::string& s);
 };

@@ -13,6 +13,7 @@ class ReaderQuickSettingsActivity final : public Activity {
 
   void adjustSelected(int direction);
   void openFontPicker();
+  void openStatusBarSettings();
   int currentItemCount() const;
 
  public:

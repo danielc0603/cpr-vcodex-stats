@@ -144,6 +144,15 @@ class CrossPointSettings {
     SLEEP_TIMEOUT_COUNT
   };
 
+  enum IDLE_TIME_THRESHOLD {
+    IDLE_TIME_3_MIN = 0,
+    IDLE_TIME_5_MIN = 1,
+    IDLE_TIME_10_MIN = 2,
+    IDLE_TIME_15_MIN = 3,
+    IDLE_TIME_30_MIN = 4,
+    IDLE_TIME_THRESHOLD_COUNT
+  };
+
   // E-ink refresh frequency (pages between full refreshes)
   enum REFRESH_FREQUENCY {
     REFRESH_1 = 0,
@@ -171,12 +180,11 @@ class CrossPointSettings {
     TOGGLE_FONT = 4,
     TOGGLE_BIONIC_READING = 5,
     TOGGLE_BOOKMARK = 6,
-    SYNC_PROGRESS = 7,
-    MARK_FINISHED = 8,
-    OPEN_READING_STATS = 9,
-    SCREENSHOT = 10,
-    CYCLE_PAGE_TURN = 11,
-    FILE_TRANSFER = 12,
+    MARK_FINISHED = 7,
+    OPEN_READING_STATS = 8,
+    SCREENSHOT = 9,
+    CYCLE_PAGE_TURN = 10,
+    FILE_TRANSFER = 11,
     SHORT_PWRBTN_COUNT
   };
   enum TILT_PAGE_TURN { TILT_OFF = 0, TILT_NORMAL = 1, TILT_INVERTED = 2, TILT_PAGE_TURN_COUNT };
@@ -200,12 +208,11 @@ class CrossPointSettings {
     LONG_MENU_TOGGLE_BIONIC = 3,
     LONG_MENU_TOGGLE_BOOKMARK = 4,
     LONG_MENU_REFRESH_SCREEN = 5,
-    LONG_MENU_SYNC_PROGRESS = 6,
-    LONG_MENU_MARK_FINISHED = 7,
-    LONG_MENU_READING_STATS = 8,
-    LONG_MENU_SCREENSHOT = 9,
-    LONG_MENU_CYCLE_PAGE_TURN = 10,
-    LONG_MENU_FILE_TRANSFER = 11,
+    LONG_MENU_MARK_FINISHED = 6,
+    LONG_MENU_READING_STATS = 7,
+    LONG_MENU_SCREENSHOT = 8,
+    LONG_MENU_CYCLE_PAGE_TURN = 9,
+    LONG_MENU_FILE_TRANSFER = 10,
     LONG_PRESS_MENU_ACTION_COUNT
   };
 
@@ -242,11 +249,6 @@ class CrossPointSettings {
     SYNC_DAY_REMINDER_60 = 6,
     SYNC_DAY_REMINDER_STARTS_COUNT
   };
-  enum OPDS_FILENAME_FORMAT {
-    OPDS_FILENAME_AUTHOR_TITLE = 0,
-    OPDS_FILENAME_TITLE_AUTHOR = 1,
-    OPDS_FILENAME_FORMAT_COUNT
-  };
   enum SHORTCUT_LOCATION {
     SHORTCUT_HOME = 0,
     SHORTCUT_APPS = 1,
@@ -256,12 +258,10 @@ class CrossPointSettings {
   enum FILE_BROWSER_VIEW { FILE_BROWSER_LIST = 0, FILE_BROWSER_BOOKSHELF = 1, FILE_BROWSER_VIEW_COUNT };
   enum LIBRARY_DEFAULT_VIEW { LIBRARY_VIEW_COVER = 0, LIBRARY_VIEW_FILES = 1, LIBRARY_DEFAULT_VIEW_COUNT };
   enum BOOKSHELF_COLUMNS {
-    BOOKSHELF_LAYOUT_2X2 = 0,
-    BOOKSHELF_LAYOUT_3X3 = 1,
-    BOOKSHELF_LAYOUT_3X4 = 2,
-    BOOKSHELF_COLUMNS_2 = BOOKSHELF_LAYOUT_2X2,
+    BOOKSHELF_LAYOUT_3X3 = 0,
+    BOOKSHELF_COLUMNS_2 = BOOKSHELF_LAYOUT_3X3,
     BOOKSHELF_COLUMNS_3 = BOOKSHELF_LAYOUT_3X3,
-    BOOKSHELF_COLUMNS_COUNT = 3,
+    BOOKSHELF_COLUMNS_COUNT = 1,
     BOOKSHELF_LAYOUT_2X3 = BOOKSHELF_LAYOUT_3X3
   };
   enum LIBRARY_SORT {
@@ -347,11 +347,6 @@ class CrossPointSettings {
 
   // Reader screen margin settings
   uint8_t screenMargin = 5;
-  // OPDS browser settings
-  char opdsServerUrl[128] = "";
-  char opdsUsername[64] = "";
-  char opdsPassword[64] = "";
-  uint8_t opdsFilenameFormat = OPDS_FILENAME_AUTHOR_TITLE;
   // Hide battery percentage
   uint8_t hideBatteryPercentage = HIDE_NEVER;
   // Long-press chapter skip on side buttons
@@ -376,12 +371,15 @@ class CrossPointSettings {
   uint8_t timeZonePreset = 0;
   uint8_t dateFormat = DATE_DD_MM_YYYY;
   uint8_t dailyGoalTarget = DAILY_GOAL_30_MIN;
+  uint8_t idleTimeThreshold = IDLE_TIME_5_MIN;
   uint8_t showStatsAfterReading = 1;
   uint8_t achievementsEnabled = 1;
   uint8_t achievementPopups = 1;
   uint8_t appsHubShortcutOrder = 1;
-  uint8_t browseFilesShortcut = SHORTCUT_HOME;
-  uint8_t browseFilesShortcutOrder = 0;
+  uint8_t libraryShortcut = SHORTCUT_HOME;
+  uint8_t libraryShortcutOrder = 0;
+  uint8_t browseFilesShortcut = SHORTCUT_APPS;
+  uint8_t browseFilesShortcutOrder = 1;
   uint8_t statsShortcut = SHORTCUT_APPS;
   uint8_t statsShortcutOrder = 4;
   uint8_t syncDayShortcut = SHORTCUT_HOME;
@@ -410,8 +408,7 @@ class CrossPointSettings {
   uint8_t fileTransferShortcutOrder = 15;
   uint8_t sleepShortcut = SHORTCUT_APPS;
   uint8_t sleepShortcutOrder = 16;
-  uint8_t opdsBrowserShortcut = SHORTCUT_APPS;
-  uint8_t opdsBrowserShortcutOrder = 17;
+  uint8_t libraryShortcutVisible = 1;
   uint8_t browseFilesShortcutVisible = 1;
   uint8_t statsShortcutVisible = 0;
   uint8_t syncDayShortcutVisible = 1;
@@ -427,7 +424,6 @@ class CrossPointSettings {
   uint8_t favoritesShortcutVisible = 1;
   uint8_t fileTransferShortcutVisible = 1;
   uint8_t sleepShortcutVisible = 1;
-  uint8_t opdsBrowserShortcutVisible = 1;
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Use book's embedded CSS styles for EPUB rendering (1 = enabled, 0 = disabled)
@@ -438,8 +434,11 @@ class CrossPointSettings {
   uint8_t libraryDefaultView = LIBRARY_VIEW_COVER;
   uint8_t bookshelfColumns = BOOKSHELF_LAYOUT_3X3;
   uint8_t librarySort = LIBRARY_SORT_TITLE;
+  uint8_t librarySortDescending = 0;
   uint8_t advancedStatusHeader = 1;
+  uint8_t showToReadShelf = 1;
   uint8_t recentBooksView = RECENT_BOOKS_GRID;
+  uint8_t removeReadBooksFromRecents = 0;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
 
@@ -458,6 +457,21 @@ class CrossPointSettings {
   uint16_t getPowerButtonDuration() const { return getPowerButtonWakeDuration(); }
   uint16_t getPowerButtonLongPressDuration() const { return POWER_BUTTON_LONG_PRESS_MS; }
   int getReaderFontId() const;
+  uint32_t getIdleTimeThresholdMs() const {
+    switch (idleTimeThreshold) {
+      case IDLE_TIME_3_MIN:
+        return 3UL * 60UL * 1000UL;
+      case IDLE_TIME_10_MIN:
+        return 10UL * 60UL * 1000UL;
+      case IDLE_TIME_15_MIN:
+        return 15UL * 60UL * 1000UL;
+      case IDLE_TIME_30_MIN:
+        return 30UL * 60UL * 1000UL;
+      case IDLE_TIME_5_MIN:
+      default:
+        return 5UL * 60UL * 1000UL;
+    }
+  }
 
   // If count_only is true, returns the number of settings items that would be written.
   uint8_t writeSettings(FsFile& file, bool count_only = false) const;

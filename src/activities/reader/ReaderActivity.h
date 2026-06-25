@@ -1,9 +1,9 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "../Activity.h"
-#include "activities/home/FileBrowserActivity.h"
 
 class Epub;
 class Xtc;

@@ -7,6 +7,7 @@
 #include <Logging.h>
 
 #include <cstdlib>
+#include <memory>
 #include <new>
 
 #include "DirectPixelWriter.h"
@@ -38,6 +39,16 @@ struct JpegContext {
 
   PixelCache cache;
   bool caching{false};
+};
+
+struct JpegDecoderGuard {
+  explicit JpegDecoderGuard(JPEGDEC* decoder) : decoder(decoder) {}
+  ~JpegDecoderGuard() {
+    if (decoder) {
+      decoder->close();
+    }
+  }
+  JPEGDEC* decoder;
 };
 
 // File I/O callbacks use pFile->fHandle to access the FsFile*,
@@ -339,16 +350,16 @@ bool JpegToFramebufferConverter::getDimensionsStatic(const std::string& imagePat
     return false;
   }
 
-  JPEGDEC* jpeg = new (std::nothrow) JPEGDEC();
+  std::unique_ptr<JPEGDEC> jpeg(new (std::nothrow) JPEGDEC());
   if (!jpeg) {
     LOG_ERR("JPG", "Failed to allocate JPEG decoder for dimensions");
     return false;
   }
+  JpegDecoderGuard jpegGuard(jpeg.get());
 
   int rc = jpeg->open(imagePath.c_str(), jpegOpen, jpegClose, jpegRead, jpegSeek, nullptr);
   if (rc != 1) {
     LOG_ERR("JPG", "Failed to open JPEG for dimensions (err=%d): %s", jpeg->getLastError(), imagePath.c_str());
-    delete jpeg;
     return false;
   }
 
@@ -356,8 +367,6 @@ bool JpegToFramebufferConverter::getDimensionsStatic(const std::string& imagePat
   out.height = jpeg->getHeight();
   LOG_DBG("JPG", "Image dimensions: %dx%d", out.width, out.height);
 
-  jpeg->close();
-  delete jpeg;
   return true;
 }
 
@@ -371,11 +380,12 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
     return false;
   }
 
-  JPEGDEC* jpeg = new (std::nothrow) JPEGDEC();
+  std::unique_ptr<JPEGDEC> jpeg(new (std::nothrow) JPEGDEC());
   if (!jpeg) {
     LOG_ERR("JPG", "Failed to allocate JPEG decoder");
     return false;
   }
+  JpegDecoderGuard jpegGuard(jpeg.get());
 
   JpegContext ctx;
   ctx.renderer = &renderer;
@@ -386,7 +396,6 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   int rc = jpeg->open(imagePath.c_str(), jpegOpen, jpegClose, jpegRead, jpegSeek, jpegDrawCallback);
   if (rc != 1) {
     LOG_ERR("JPG", "Failed to open JPEG (err=%d): %s", jpeg->getLastError(), imagePath.c_str());
-    delete jpeg;
     return false;
   }
 
@@ -395,14 +404,10 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
 
   if (srcWidth <= 0 || srcHeight <= 0) {
     LOG_ERR("JPG", "Invalid JPEG dimensions: %dx%d", srcWidth, srcHeight);
-    jpeg->close();
-    delete jpeg;
     return false;
   }
 
   if (!validateImageDimensions(srcWidth, srcHeight, "JPEG")) {
-    jpeg->close();
-    delete jpeg;
     return false;
   }
 
@@ -472,13 +477,9 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
 
   if (rc != 1) {
     LOG_ERR("JPG", "Decode failed (rc=%d, lastError=%d)", rc, jpeg->getLastError());
-    jpeg->close();
-    delete jpeg;
     return false;
   }
 
-  jpeg->close();
-  delete jpeg;
   LOG_DBG("JPG", "JPEG decoding complete - render time: %lu ms", decodeTime);
 
   // Write cache file if caching was enabled

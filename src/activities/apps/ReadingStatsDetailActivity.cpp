@@ -44,7 +44,6 @@ constexpr uint32_t HOLD_PREVIEW_MS = 250;
 constexpr uint32_t ADJUST_READING_TIME_LONG_PRESS_MS = 1100;
 constexpr size_t MAX_RESOLVED_COVERS = 16;
 constexpr int COVER_ANALYSIS_MAX_SAMPLES = 1200;
-
 struct ResolvedCoverCacheEntry {
   std::string bookPath;
   std::string coverBmpPath;

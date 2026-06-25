@@ -87,6 +87,14 @@ void ChapterHtmlSlimParser::updateEffectiveInlineStyle() {
   }
 }
 
+void ChapterHtmlSlimParser::flushPendingAnchor() {
+  if (pendingAnchorId.empty()) {
+    return;
+  }
+  anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
+  pendingAnchorId.clear();
+}
+
 // flush the contents of partWordBuffer to currentTextBlock
 void ChapterHtmlSlimParser::flushPartWordBuffer() {
   // Determine font style from depth-based tracking and CSS effective style
@@ -169,6 +177,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
         styleAttr = atts[i + 1];
       } else if (strcmp(atts[i], "id") == 0) {
         // Defer recording until startNewTextBlock, after previous block is flushed to pages
+        if (!self->pendingAnchorId.empty()) {
+          self->flushPendingAnchor();
+        }
         self->pendingAnchorId = atts[i + 1];
       }
     }
@@ -296,7 +307,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
 
         {
           // Resolve the image path relative to the HTML file
-          std::string resolvedPath = FsHelpers::normalisePath(self->contentBase + src);
+          std::string resolvedPath = FsHelpers::normalisePath(FsHelpers::decodeUriEscapes(self->contentBase + src));
 
           if (ImageDecoderFactory::isFormatSupported(resolvedPath)) {
             // Create a unique filename for the cached image

@@ -7,7 +7,6 @@
 #include <iterator>
 
 #include "CrossPointSettings.h"
-#include "KOReaderCredentialStore.h"
 #include "util/ShortcutRegistry.h"
 
 namespace {
@@ -17,13 +16,12 @@ constexpr uint8_t OPT_POWER_ACTION_VALUES[] = {CrossPointSettings::IGNORE, Cross
                                                CrossPointSettings::FORCE_REFRESH, CrossPointSettings::SCREENSHOT,
                                                CrossPointSettings::CYCLE_PAGE_TURN};
 constexpr StrId OPT_MENU_ACTIONS[] = {StrId::STR_IGNORE,       StrId::STR_BIONIC_READING, StrId::STR_FONT_FAMILY,
-                                      StrId::STR_BOOKMARKS,    StrId::STR_SYNC_PROGRESS,  StrId::STR_MARK_FINISHED,
+                                      StrId::STR_BOOKMARKS,    StrId::STR_MARK_FINISHED,
                                       StrId::STR_READING_STATS};
 constexpr uint8_t OPT_MENU_ACTION_VALUES[] = {CrossPointSettings::LONG_MENU_OFF,
                                               CrossPointSettings::LONG_MENU_TOGGLE_BIONIC,
                                               CrossPointSettings::LONG_MENU_CHANGE_FONT,
                                               CrossPointSettings::LONG_MENU_TOGGLE_BOOKMARK,
-                                              CrossPointSettings::LONG_MENU_SYNC_PROGRESS,
                                               CrossPointSettings::LONG_MENU_MARK_FINISHED,
                                               CrossPointSettings::LONG_MENU_READING_STATS};
 constexpr StrId OPT_FRONT_LONG_PRESS[] = {StrId::STR_STATE_OFF, StrId::STR_LONG_PRESS_SKIP, StrId::STR_ORIENTATION};
@@ -66,23 +64,6 @@ const std::vector<SettingInfo>& getSettingsList() {
           StrId::STR_REFRESH_FREQ, &CrossPointSettings::refreshFrequency,
           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15, StrId::STR_PAGES_30},
           "refreshFrequency", StrId::STR_CAT_DISPLAY),
-      SettingInfo::Enum(StrId::STR_MENU_RECENT_BOOKS, &CrossPointSettings::recentBooksView,
-                        {StrId::STR_FILE_VIEW_LIST, StrId::STR_FILE_VIEW_GRID}, "recentBooksView",
-                        StrId::STR_CAT_SYSTEM),
-      SettingInfo::Enum(StrId::STR_LIBRARY_COLUMNS, &CrossPointSettings::bookshelfColumns,
-                        {StrId::STR_LAYOUT_2X2, StrId::STR_LAYOUT_3X3, StrId::STR_LAYOUT_3X4},
-                        "bookshelfColumns", StrId::STR_CAT_SYSTEM)
-          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
-      SettingInfo::Enum(StrId::STR_LIBRARY_VIEW, &CrossPointSettings::libraryDefaultView,
-                        {StrId::STR_COVER_LIBRARY, StrId::STR_FILE_LIST}, "libraryDefaultView",
-                        StrId::STR_CAT_SYSTEM),
-      SettingInfo::Enum(StrId::STR_LIBRARY_SORT_BY, &CrossPointSettings::librarySort,
-                        {StrId::STR_TITLE, StrId::STR_AUTHOR, StrId::STR_RECENT_BOOKS, StrId::STR_PROGRESS},
-                        "librarySort", StrId::STR_CAT_SYSTEM)
-          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
-      SettingInfo::Toggle(StrId::STR_LIBRARY_STATUS, &CrossPointSettings::advancedStatusHeader, "advancedStatusHeader",
-                          StrId::STR_CAT_SYSTEM)
-          .visibleWhen(SettingInfo::Visibility::LibraryCoverView),
       SettingInfo::Toggle(StrId::STR_SHOW_CURRENT_BOOK_CARD, &CrossPointSettings::showCurrentBookCard,
                           "showCurrentBookCard", StrId::STR_CAT_DISPLAY),
       SettingInfo::Toggle(StrId::STR_DARK_MODE, &CrossPointSettings::darkMode, "darkMode", StrId::STR_CAT_DISPLAY),
@@ -188,6 +169,9 @@ const std::vector<SettingInfo>& getSettingsList() {
                           "achievementPopups", StrId::STR_APPS),
 
       // --- Shortcuts (web-only launcher placement) ---
+      SettingInfo::Enum(StrId::STR_LIBRARY, &CrossPointSettings::libraryShortcut,
+                        {StrId::STR_HOME_LOCATION, StrId::STR_APPS}, "libraryShortcut",
+                        StrId::STR_SHORTCUTS_SECTION),
       SettingInfo::Enum(StrId::STR_BROWSE_FILES, &CrossPointSettings::browseFilesShortcut,
                         {StrId::STR_HOME_LOCATION, StrId::STR_APPS}, "browseFilesShortcut",
                         StrId::STR_SHORTCUTS_SECTION),
@@ -227,39 +211,6 @@ const std::vector<SettingInfo>& getSettingsList() {
                         {StrId::STR_HOME_LOCATION, StrId::STR_APPS}, "sleepShortcut",
                         StrId::STR_SHORTCUTS_SECTION),
 
-      // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
-      SettingInfo::DynamicString(
-          StrId::STR_KOREADER_USERNAME, [] { return KOREADER_STORE.getUsername(); },
-          [](const std::string& v) {
-            KOREADER_STORE.setCredentials(v, KOREADER_STORE.getPassword());
-            KOREADER_STORE.saveToFile();
-          },
-          "koUsername", StrId::STR_KOREADER_SYNC),
-      SettingInfo::DynamicString(
-          StrId::STR_KOREADER_PASSWORD, [] { return KOREADER_STORE.getPassword(); },
-          [](const std::string& v) {
-            KOREADER_STORE.setCredentials(KOREADER_STORE.getUsername(), v);
-            KOREADER_STORE.saveToFile();
-          },
-          "koPassword", StrId::STR_KOREADER_SYNC),
-      SettingInfo::DynamicString(
-          StrId::STR_SYNC_SERVER_URL, [] { return KOREADER_STORE.getServerUrl(); },
-          [](const std::string& v) {
-            KOREADER_STORE.setServerUrl(v);
-            KOREADER_STORE.saveToFile();
-          },
-          "koServerUrl", StrId::STR_KOREADER_SYNC),
-      SettingInfo::DynamicEnum(
-          StrId::STR_DOCUMENT_MATCHING, {StrId::STR_FILENAME, StrId::STR_BINARY},
-          [] { return static_cast<uint8_t>(KOREADER_STORE.getMatchMethod()); },
-          [](uint8_t v) {
-            KOREADER_STORE.setMatchMethod(static_cast<DocumentMatchMethod>(v));
-            KOREADER_STORE.saveToFile();
-          },
-          "koMatchMethod", StrId::STR_KOREADER_SYNC),
-      SettingInfo::Enum(StrId::STR_OPDS_FILENAME_FORMAT, &CrossPointSettings::opdsFilenameFormat,
-                        {StrId::STR_AUTHOR_TITLE, StrId::STR_TITLE_AUTHOR}, "opdsFilenameFormat",
-                        StrId::STR_KOREADER_SYNC),
       // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
       SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
                           "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR),

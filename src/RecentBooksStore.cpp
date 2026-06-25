@@ -9,7 +9,9 @@
 #include <Xtc.h>
 
 #include <algorithm>
+#include <cctype>
 
+#include "LibraryMetadataStore.h"
 #include "ReadingStatsStore.h"
 #include "util/BookIdentity.h"
 
@@ -167,6 +169,188 @@ bool RecentBooksStore::removeBook(const std::string& key) {
   recentBooks.erase(recentBooks.begin() + existingIndex);
   saveToFile();
   return true;
+}
+
+bool RecentBooksStore::repairOrRemoveMissingBook(const std::string& key) {
+  const int existingIndex = findBookIndex(key, key);
+  if (existingIndex < 0) {
+    return false;
+  }
+
+  RecentBook& book = recentBooks[existingIndex];
+  if (!book.path.empty() && Storage.exists(book.path.c_str())) {
+    return false;
+  }
+
+  const LibraryBookMetadata* metadata = nullptr;
+  if (!book.bookId.empty()) {
+    metadata = LIBRARY_METADATA.findBook(book.bookId);
+  }
+  if (metadata == nullptr && !book.path.empty()) {
+    metadata = LIBRARY_METADATA.findBook(book.path);
+  }
+
+  if (metadata != nullptr) {
+    auto applyCandidate = [this, &book, metadata](const std::string& candidatePath) {
+      const std::string normalizedPath = BookIdentity::normalizePath(candidatePath);
+      if (normalizedPath.empty() || !Storage.exists(normalizedPath.c_str())) {
+        return false;
+      }
+      book.path = normalizedPath;
+      if (!metadata->stableId.empty()) {
+        book.bookId = metadata->stableId;
+      } else if (!metadata->bookId.empty()) {
+        book.bookId = metadata->bookId;
+      }
+      if (book.title.empty() && !metadata->title.empty()) {
+        book.title = metadata->title;
+      }
+      if (book.author.empty() && !metadata->author.empty()) {
+        book.author = metadata->author;
+      }
+      if (book.coverBmpPath.empty() && !metadata->coverPath.empty()) {
+        book.coverBmpPath = metadata->coverPath;
+      }
+      normalizeBook(book);
+      saveToFile();
+      return true;
+    };
+
+    if (applyCandidate(metadata->path)) {
+      return true;
+    }
+    for (const auto& knownPath : metadata->knownPaths) {
+      if (applyCandidate(knownPath)) {
+        return true;
+      }
+    }
+  }
+
+  recentBooks.erase(recentBooks.begin() + existingIndex);
+  saveToFile();
+  return true;
+}
+
+bool RecentBooksStore::repairOrRemoveMissingBooks() {
+  bool changed = false;
+  for (int index = static_cast<int>(recentBooks.size()) - 1; index >= 0; --index) {
+    const RecentBook book = recentBooks[static_cast<size_t>(index)];
+    if (!book.path.empty() && Storage.exists(book.path.c_str())) {
+      continue;
+    }
+    const std::string key = !book.bookId.empty() ? book.bookId : book.path;
+    if (key.empty()) {
+      recentBooks.erase(recentBooks.begin() + index);
+      changed = true;
+      continue;
+    }
+    changed = repairOrRemoveMissingBook(key) || changed;
+  }
+  if (changed) {
+    saveToFile();
+  }
+  return changed;
+}
+
+bool RecentBooksStore::repairRenamedBooks(const std::vector<std::string>& livePaths) {
+  if (livePaths.empty() || recentBooks.empty()) {
+    return false;
+  }
+
+  struct LiveBook {
+    std::string path;
+    std::string bookId;
+    std::string fallbackKey;
+  };
+  auto normalizedFallbackKey = [](const std::string& path, const std::string& title, const std::string& author) {
+    auto normalize = [](std::string value) {
+      std::transform(value.begin(), value.end(), value.begin(),
+                     [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+      std::string token;
+      std::vector<std::string> tokens;
+      for (const char ch : value) {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (std::isalnum(uch)) {
+          token.push_back(ch);
+        } else if (!token.empty()) {
+          tokens.push_back(token);
+          token.clear();
+        }
+      }
+      if (!token.empty()) tokens.push_back(token);
+      if (tokens.size() == 2) {
+        std::sort(tokens.begin(), tokens.end());
+      }
+      value.clear();
+      for (const auto& part : tokens) {
+        value += part;
+      }
+      return value;
+    };
+    std::string resolvedTitle = title.empty() ? fallbackTitleFromPath(path) : title;
+    std::string resolvedAuthor = author;
+    if (resolvedAuthor.empty()) {
+      const size_t slash = path.find_last_of('/');
+      if (slash != std::string::npos && slash > 0) {
+        const size_t parentEnd = slash - 1;
+        const size_t parentStart = path.find_last_of('/', parentEnd);
+        const size_t start = parentStart == std::string::npos ? 0 : parentStart + 1;
+        resolvedAuthor = path.substr(start, parentEnd - start + 1);
+      }
+    }
+    if (!resolvedAuthor.empty()) {
+      const std::string suffix = " - " + resolvedAuthor;
+      if (resolvedTitle.size() > suffix.size() &&
+          resolvedTitle.compare(resolvedTitle.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        resolvedTitle.resize(resolvedTitle.size() - suffix.size());
+      }
+    }
+    return normalize(resolvedAuthor) + "|" + normalize(resolvedTitle);
+  };
+
+  std::vector<LiveBook> liveBooks;
+  liveBooks.reserve(livePaths.size());
+  for (const auto& path : livePaths) {
+    const std::string normalizedPath = BookIdentity::normalizePath(path);
+    if (normalizedPath.empty() || !Storage.exists(normalizedPath.c_str())) {
+      continue;
+    }
+    liveBooks.push_back(
+        LiveBook{normalizedPath, BookIdentity::resolveStableBookId(normalizedPath),
+                 normalizedFallbackKey(normalizedPath, "", "")});
+  }
+
+  bool changed = false;
+  for (auto& book : recentBooks) {
+    if (!book.path.empty() && Storage.exists(book.path.c_str())) {
+      continue;
+    }
+    const std::string fallbackKey = normalizedFallbackKey(book.path, book.title, book.author);
+    for (const auto& live : liveBooks) {
+      const bool sameId = !book.bookId.empty() && !BookIdentity::isLegacyBookId(book.bookId) &&
+                          !live.bookId.empty() && book.bookId == live.bookId;
+      const bool sameFallback = !fallbackKey.empty() && fallbackKey == live.fallbackKey;
+      if (!sameId && !sameFallback) {
+        continue;
+      }
+      book.path = live.path;
+      if (!live.bookId.empty()) book.bookId = live.bookId;
+      changed = true;
+      break;
+    }
+  }
+
+  const size_t before = recentBooks.size();
+  recentBooks.erase(std::remove_if(recentBooks.begin(), recentBooks.end(), [](const RecentBook& book) {
+                      return book.path.empty() || !Storage.exists(book.path.c_str());
+                    }),
+                    recentBooks.end());
+  changed = changed || before != recentBooks.size();
+  if (changed) {
+    normalizeBooks();
+    saveToFile();
+  }
+  return changed;
 }
 
 bool RecentBooksStore::saveToFile() const {

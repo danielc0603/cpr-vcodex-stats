@@ -35,7 +35,8 @@ class Epub {
   bool parseTocNcxFile() const;
   bool parseTocNavFile() const;
   void parseCssFiles() const;
-  bool generateThumbBmpToPath(int width, int height, const std::string& thumbPath) const;
+  bool generateThumbBmpToPath(int width, int height, const std::string& thumbPath,
+                              bool (*shouldCancel)(void*) = nullptr, void* cancelCtx = nullptr) const;
 
  public:
   explicit Epub(std::string filepath, const std::string& cacheDir) : filepath(std::move(filepath)) {
@@ -44,7 +45,7 @@ class Epub {
   }
   ~Epub() = default;
   std::string& getBasePath() { return contentBasePath; }
-  bool load(bool buildIfMissing = true, bool skipLoadingCss = false);
+  bool load(bool buildIfMissing = true, bool skipLoadingCss = false, bool metadataOnly = false);
   bool clearCache() const;
   void setupCacheDir() const;
   const std::string& getCachePath() const;
@@ -58,7 +59,8 @@ class Epub {
   std::string getThumbBmpPath(int height) const;
   std::string getThumbBmpPath(int width, int height) const;
   bool generateThumbBmp(int height) const;
-  bool generateThumbBmp(int width, int height) const;
+  bool generateThumbBmp(int width, int height, bool (*shouldCancel)(void*) = nullptr,
+                        void* cancelCtx = nullptr) const;
   uint8_t* readItemContentsToBytes(const std::string& itemHref, size_t* size = nullptr,
                                    bool trailingNullByte = false) const;
   bool readItemContentsToStream(const std::string& itemHref, Print& out, size_t chunkSize) const;

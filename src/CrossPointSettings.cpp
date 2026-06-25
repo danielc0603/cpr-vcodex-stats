@@ -206,10 +206,8 @@ bool CrossPointSettings::loadFromBinaryFile() {
     readAndValidate(inputFile, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
     {
-      std::string urlStr;
-      serialization::readString(inputFile, urlStr);
-      strncpy(opdsServerUrl, urlStr.c_str(), sizeof(opdsServerUrl) - 1);
-      opdsServerUrl[sizeof(opdsServerUrl) - 1] = '\0';
+      std::string ignoredLegacyUrl;
+      serialization::readString(inputFile, ignoredLegacyUrl);
     }
     if (++settingsRead >= fileSettingsCount) break;
     serialization::readPod(inputFile, textAntiAliasing);
@@ -221,17 +219,13 @@ bool CrossPointSettings::loadFromBinaryFile() {
     serialization::readPod(inputFile, hyphenationEnabled);
     if (++settingsRead >= fileSettingsCount) break;
     {
-      std::string usernameStr;
-      serialization::readString(inputFile, usernameStr);
-      strncpy(opdsUsername, usernameStr.c_str(), sizeof(opdsUsername) - 1);
-      opdsUsername[sizeof(opdsUsername) - 1] = '\0';
+      std::string ignoredLegacyUsername;
+      serialization::readString(inputFile, ignoredLegacyUsername);
     }
     if (++settingsRead >= fileSettingsCount) break;
     {
-      std::string passwordStr;
-      serialization::readString(inputFile, passwordStr);
-      strncpy(opdsPassword, passwordStr.c_str(), sizeof(opdsPassword) - 1);
-      opdsPassword[sizeof(opdsPassword) - 1] = '\0';
+      std::string ignoredLegacyPassword;
+      serialization::readString(inputFile, ignoredLegacyPassword);
     }
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, sleepScreenCoverFilter, SLEEP_SCREEN_COVER_FILTER_COUNT);

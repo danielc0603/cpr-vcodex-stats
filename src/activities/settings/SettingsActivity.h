@@ -11,18 +11,17 @@
 
 struct Rect;
 
-enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING, SECTION };
+enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING, SECTION, GROUP };
 
 enum class SettingAction {
   None,
   RemapFrontButtons,
   RemapReaderFrontButtons,
   CustomiseStatusBar,
-  KOReaderSync,
-  OPDSBrowser,
   Network,
   ClearCache,
   CheckForUpdates,
+  InstallUpdateFromSd,
   Language,
   SyncDay,
   TimeZone,
@@ -32,6 +31,7 @@ enum class SettingAction {
   ImportReadingStats,
   ReadingHeatmap,
   ReadingProfile,
+  ReadingTimeChart,
   Achievements,
   ResetAchievements,
   SyncAchievementsFromStats,
@@ -44,6 +44,7 @@ enum class SettingAction {
   SleepApp,
   IfFound,
   FontSelection,
+  LibraryControls,
 };
 
 struct SettingInfo {
@@ -53,7 +54,8 @@ struct SettingInfo {
   std::vector<StrId> enumValues;
   std::vector<uint8_t> enumRawValues;
   SettingAction action = SettingAction::None;
-  enum class Visibility { Always, FrontOrientationTarget, SideOrientationTarget, LibraryCoverView };
+  int groupId = -1;
+  enum class Visibility { Always, FrontOrientationTarget, SideOrientationTarget };
   Visibility visibility = Visibility::Always;
 
   struct ValueRange {
@@ -71,7 +73,7 @@ struct SettingInfo {
   size_t stringOffset = 0;
   size_t stringMaxLen = 0;
 
-  // Dynamic accessors (for settings stored outside CrossPointSettings, e.g. KOReaderCredentialStore)
+  // Dynamic accessors for settings stored outside CrossPointSettings.
   std::function<uint8_t()> valueGetter;
   std::function<void(uint8_t)> valueSetter;
   std::function<std::string()> stringGetter;
@@ -130,6 +132,14 @@ struct SettingInfo {
     SettingInfo s;
     s.nameId = nameId;
     s.type = SettingType::SECTION;
+    return s;
+  }
+
+  static SettingInfo Group(StrId nameId, int groupId) {
+    SettingInfo s;
+    s.nameId = nameId;
+    s.type = SettingType::GROUP;
+    s.groupId = groupId;
     return s;
   }
 
@@ -200,16 +210,26 @@ class SettingsActivity final : public Activity {
   std::vector<SettingRef> controlsSettings;
   std::vector<SettingRef> systemSettings;
   std::vector<SettingRef> appSettings;
+  std::vector<SettingInfo> groupSettings;
+  std::vector<std::vector<SettingRef>> nestedPages;
+  std::vector<int> pageStack;
+  std::vector<int> selectionStack;
   const std::vector<SettingRef>* currentSettings = nullptr;
   bool settingsListsBuilt = false;
   int initialCategoryIndex = 0;
   const SettingInfo* pickerSetting = nullptr;
   int pickerSelectedIndex = 0;
+  bool libraryControlsOpen = false;
+  bool libraryDeleteConfirmOpen = false;
+  int libraryControlsIndex = 0;
+  int libraryDeleteConfirmIndex = 0;
 
   static constexpr int categoryCount = 5;
   static const StrId categoryNames[categoryCount];
 
   void enterCategory(int categoryIndex);
+  void enterNestedPage(int pageId);
+  bool leaveNestedPage();
   bool isSelectableSetting(int settingIndex) const;
   int firstSelectableSettingIndex() const;
   int stepSettingSelection(int direction) const;
@@ -219,6 +239,13 @@ class SettingsActivity final : public Activity {
   void toggleCurrentSetting();
   void openEnumPicker(const SettingInfo& setting);
   void closeEnumPicker(bool apply);
+  void openLibraryControls();
+  void closeLibraryControls();
+  void renderLibraryControlsHud() const;
+  void renderLibraryDeleteConfirmHud() const;
+  void handleLibraryControlsInput();
+  void executeLibraryControlAction(int index);
+  void confirmDeleteLibraryCache();
   void buildSettingsLists();
 
  public:

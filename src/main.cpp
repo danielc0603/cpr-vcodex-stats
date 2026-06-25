@@ -21,11 +21,10 @@
 #include "CrossPointState.h"
 #include "FavoritesStore.h"
 #include "GlobalActions.h"
-#include "KOReaderCredentialStore.h"
 #include "LibraryMetadataStore.h"
+#include "ManualLibraryStore.h"
 #include "MappedInputManager.h"
 #include "AchievementsStore.h"
-#include "OpdsServerStore.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontGlobals.h"
@@ -403,20 +402,6 @@ void setup() {
     I18N.loadSettings();
   }
 
-  if (BootRecovery::shouldSkipKOReader()) {
-    logSkip("Skipping KOReader credential load due to recovery mode");
-  } else {
-    BootRecovery::enterStage(BootRecovery::BootStage::KOReader);
-    KOREADER_STORE.loadFromFile();
-  }
-
-  if (BootRecovery::shouldSkipOPDS()) {
-    logSkip("Skipping OPDS store load due to recovery mode");
-  } else {
-    BootRecovery::enterStage(BootRecovery::BootStage::OPDS);
-    OPDS_STORE.loadFromFile();
-  }
-
   BootRecovery::enterStage(BootRecovery::BootStage::UiTheme);
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
@@ -492,6 +477,7 @@ void setup() {
 
   if (!manualSafeBoot) {
     LIBRARY_METADATA.loadFromFile();
+    MANUAL_LIBRARY.loadFromFile();
   }
 
   if (skipAchievementsLoad) {

@@ -79,7 +79,7 @@ std::string_view stripTrailingImportant(std::string_view value) {
 
 // String utilities implementation
 
-std::string CssParser::normalized(const std::string& s) {
+std::string CssParser::normalized(std::string_view s) {
   std::string result;
   result.reserve(s.size());
 
@@ -103,7 +103,7 @@ std::string CssParser::normalized(const std::string& s) {
   return result;
 }
 
-void CssParser::normalizedInto(const std::string& s, std::string& out) {
+void CssParser::normalizedInto(std::string_view s, std::string& out) {
   out.clear();
   out.reserve(s.size());
 
@@ -260,10 +260,10 @@ bool CssParser::tryInterpretLength(const std::string& val, CssLength& out) {
 
 // Declaration parsing
 
-void CssParser::parseDeclarationIntoStyle(const std::string& decl, CssStyle& style, std::string& propNameBuf,
+void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style, std::string& propNameBuf,
                                           std::string& propValueBuf) {
   const size_t colonPos = decl.find(':');
-  if (colonPos == std::string::npos || colonPos == 0) return;
+  if (colonPos == std::string_view::npos || colonPos == 0) return;
 
   normalizedInto(decl.substr(0, colonPos), propNameBuf);
   normalizedInto(decl.substr(colonPos + 1), propValueBuf);
@@ -347,7 +347,7 @@ void CssParser::parseDeclarationIntoStyle(const std::string& decl, CssStyle& sty
   }
 }
 
-CssStyle CssParser::parseDeclarations(const std::string& declBlock) {
+CssStyle CssParser::parseDeclarations(std::string_view declBlock) {
   CssStyle style;
   std::string propNameBuf;
   std::string propValueBuf;
@@ -357,7 +357,7 @@ CssStyle CssParser::parseDeclarations(const std::string& declBlock) {
     if (i == declBlock.size() || declBlock[i] == ';') {
       if (i > start) {
         const size_t len = i - start;
-        std::string decl = declBlock.substr(start, len);
+        const std::string_view decl = declBlock.substr(start, len);
         if (!decl.empty()) {
           parseDeclarationIntoStyle(decl, style, propNameBuf, propValueBuf);
         }
@@ -371,17 +371,22 @@ CssStyle CssParser::parseDeclarations(const std::string& declBlock) {
 
 // Rule processing
 
-void CssParser::processRuleBlockWithStyle(const std::string& selectorGroup, const CssStyle& style) {
+void CssParser::processRuleBlockWithStyle(std::string_view selectorGroup, const CssStyle& style) {
   // Check if we've reached the rule limit before processing
   if (rulesBySelector_.size() >= MAX_RULES) {
     LOG_DBG("CSS", "Reached max rules limit (%zu), stopping CSS parsing", MAX_RULES);
     return;
   }
 
-  // Handle comma-separated selectors
-  const auto selectors = splitOnChar(selectorGroup, ',');
+  size_t start = 0;
+  for (size_t i = 0; i <= selectorGroup.size(); ++i) {
+    if (i != selectorGroup.size() && selectorGroup[i] != ',') {
+      continue;
+    }
 
-  for (const auto& sel : selectors) {
+    const std::string_view sel = selectorGroup.substr(start, i - start);
+    start = i + 1;
+
     // Validate selector length before processing
     if (sel.size() > MAX_SELECTOR_LENGTH) {
       LOG_DBG("CSS", "Selector too long (%zu > %zu), skipping", sel.size(), MAX_SELECTOR_LENGTH);
@@ -530,10 +535,10 @@ bool CssParser::loadFromStream(FsFile& source) {
       --bodyDepth;
       if (bodyDepth == 0) {
         if (!skippingRule && !declBuffer.empty()) {
-          parseDeclarationIntoStyle(declBuffer.str(), currentStyle, propNameBuf, propValueBuf);
+          parseDeclarationIntoStyle(declBuffer.view(), currentStyle, propNameBuf, propValueBuf);
         }
         if (!skippingRule) {
-          processRuleBlockWithStyle(selector.str(), currentStyle);
+          processRuleBlockWithStyle(selector.view(), currentStyle);
         }
         selector.clear();
         declBuffer.clear();
@@ -548,7 +553,7 @@ bool CssParser::loadFromStream(FsFile& source) {
     if (!skippingRule) {
       if (c == ';') {
         if (!declBuffer.empty()) {
-          parseDeclarationIntoStyle(declBuffer.str(), currentStyle, propNameBuf, propValueBuf);
+          parseDeclarationIntoStyle(declBuffer.view(), currentStyle, propNameBuf, propValueBuf);
           declBuffer.clear();
         }
       } else {

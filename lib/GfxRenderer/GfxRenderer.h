@@ -104,6 +104,7 @@ class GfxRenderer {
   void setDarkMode(const bool enabled) { darkMode = enabled; }
   bool isDarkMode() const { return darkMode; }
   void requestNextFullRefresh() const { nextRefreshFull = true; }
+  void clearNextFullRefresh() const { nextRefreshFull = false; }
   void setTextDarkness(const uint8_t d) { textDarkness = d; }
   uint8_t getTextDarkness() const { return textDarkness; }
 
@@ -111,8 +112,7 @@ class GfxRenderer {
   int getScreenWidth() const;
   int getScreenHeight() const;
   void displayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
-  // EXPERIMENTAL: Windowed update - display only a rectangular region
-  // void displayWindow(int x, int y, int width, int height) const;
+  void displayWindow(int x, int y, int width, int height, bool turnOffScreen = false) const;
   void invertScreen() const;
   void clearScreen(uint8_t color = 0xFF) const;
   void getOrientedViewableTRBL(int* outTop, int* outRight, int* outBottom, int* outLeft) const;

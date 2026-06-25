@@ -1034,6 +1034,48 @@ void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const
   display.displayBuffer(effectiveRefreshMode, fadingFix);
 }
 
+void GfxRenderer::displayWindow(int x, int y, int width, int height, bool turnOffScreen) const {
+  if (width <= 0 || height <= 0) return;
+
+  int px = x;
+  int py = y;
+  int pw = width;
+  int ph = height;
+  switch (orientation) {
+    case Portrait:
+      px = y;
+      py = panelHeight - x - width;
+      pw = height;
+      ph = width;
+      break;
+    case PortraitInverted:
+      px = panelWidth - y - height;
+      py = x;
+      pw = height;
+      ph = width;
+      break;
+    case LandscapeClockwise:
+      px = panelWidth - x - width;
+      py = panelHeight - y - height;
+      break;
+    case LandscapeCounterClockwise:
+      break;
+    default:
+      break;
+  }
+
+  px = std::max(0, px);
+  py = std::max(0, py);
+  pw = std::min(pw, static_cast<int>(panelWidth) - px);
+  ph = std::min(ph, static_cast<int>(panelHeight) - py);
+  if (pw <= 0 || ph <= 0) return;
+
+  const int alignedX = (px / 8) * 8;
+  const int alignedRight = std::min(static_cast<int>(panelWidth), ((px + pw + 7) / 8) * 8);
+  display.displayWindow(static_cast<uint16_t>(alignedX), static_cast<uint16_t>(py),
+                        static_cast<uint16_t>(alignedRight - alignedX), static_cast<uint16_t>(ph), turnOffScreen);
+}
+
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
                                        const EpdFontFamily::Style style) const {
   if (!text || maxWidth <= 0) return "";

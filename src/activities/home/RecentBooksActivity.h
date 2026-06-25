@@ -22,6 +22,7 @@ class RecentBooksActivity final : public Activity {
   int loadedPageStart = -1;
   bool confirmLongPressHandled = false;
   bool holdPreviewVisible = false;
+  bool waitForInputRelease = false;
 
   // Data loading
   void loadRecentBooks();

@@ -6,6 +6,7 @@
 class ReadingDateSelectionActivity final : public Activity {
   ButtonNavigator buttonNavigator;
   uint32_t initialDayOrdinal = 0;
+  bool allowClear = false;
   int selectedField = 0;
   int year = 2026;
   unsigned month = 6;
@@ -18,8 +19,10 @@ class ReadingDateSelectionActivity final : public Activity {
 
  public:
   explicit ReadingDateSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                        uint32_t initialDayOrdinal)
-      : Activity("ReadingDateSelection", renderer, mappedInput), initialDayOrdinal(initialDayOrdinal) {}
+                                        uint32_t initialDayOrdinal, bool allowClear = false)
+      : Activity("ReadingDateSelection", renderer, mappedInput),
+        initialDayOrdinal(initialDayOrdinal),
+        allowClear(allowClear) {}
 
   void onEnter() override;
   void loop() override;

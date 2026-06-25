@@ -24,10 +24,7 @@
 #include "util/SleepScreenCache.h"
 
 namespace {
-bool canUseSleepCache(const Bitmap& bitmap) {
-  return !(bitmap.hasGreyscale() &&
-           SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
-}
+bool canUseSleepCache(const Bitmap&) { return true; }
 
 bool usesCustomSleepImages() {
   return SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM ||
@@ -52,6 +49,7 @@ void displaySleepGrayBuffer(GfxRenderer& renderer) {
 
 void SleepActivity::onEnter() {
   Activity::onEnter();
+  renderer.clearNextFullRefresh();
   const bool restoreDarkMode = renderer.isDarkMode();
   if (restoreDarkMode) {
     renderer.setDarkMode(false);
@@ -95,19 +93,9 @@ void SleepActivity::onEnter() {
 }
 
 void SleepActivity::applySleepRefreshCleanup() const {
-  switch (SETTINGS.sleepRefreshMode) {
-    case CrossPointSettings::SLEEP_REFRESH_SOFT:
-      renderer.clearScreen();
-      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-      break;
-    case CrossPointSettings::SLEEP_REFRESH_FULL:
-      renderer.clearScreen();
-      renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-      break;
-    case CrossPointSettings::SLEEP_REFRESH_OFF:
-    default:
-      break;
-  }
+  // Prepare a clean sleep framebuffer without performing a separate visible refresh.
+  // The selected sleep screen renderer below owns the single display update.
+  renderer.clearScreen();
 }
 
 void SleepActivity::renderCustomSleepScreen() const {
@@ -262,6 +250,8 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const std::str
   int x, y;
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
+  const auto restoreRenderMode = renderer.getRenderMode();
+  renderer.setRenderMode(GfxRenderer::BW);
   float cropX = 0;
   float cropY = 0;
 
@@ -297,9 +287,6 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const std::str
 
   LOG_DBG("SLP", "drawing to %d x %d", x, y);
 
-  const bool hasGreyscale = bitmap.hasGreyscale() &&
-                            SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
-
   renderer.clearScreen();
   renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
 
@@ -311,24 +298,8 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const std::str
     SleepScreenCache::save(renderer, sourcePath);
   }
 
-  displaySleepBitmapBuffer(renderer, hasGreyscale ? HalDisplay::HALF_REFRESH : HalDisplay::FULL_REFRESH);
-
-  if (hasGreyscale) {
-    bitmap.rewindToData();
-    renderer.clearScreen(0x00);
-    renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-    renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
-    renderer.copyGrayscaleLsbBuffers();
-
-    bitmap.rewindToData();
-    renderer.clearScreen(0x00);
-    renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-    renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
-    renderer.copyGrayscaleMsbBuffers();
-
-    displaySleepGrayBuffer(renderer);
-    renderer.setRenderMode(GfxRenderer::BW);
-  }
+  displaySleepBitmapBuffer(renderer, HalDisplay::HALF_REFRESH);
+  renderer.setRenderMode(restoreRenderMode);
 }
 
 bool SleepActivity::renderPngSleepScreen(const std::string& sourcePath) const {
@@ -339,7 +310,7 @@ bool SleepActivity::renderPngSleepScreen(const std::string& sourcePath) const {
     return false;
   }
 
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
   return true;
 }
 
@@ -406,7 +377,7 @@ void SleepActivity::renderCoverSleepScreen() const {
 
   FsFile file;
   if (SleepScreenCache::load(renderer, coverBmpPath)) {
-    displaySleepBitmapBuffer(renderer, HalDisplay::FULL_REFRESH);
+    displaySleepBitmapBuffer(renderer, HalDisplay::HALF_REFRESH);
     return;
   }
   if (Storage.openFileForRead("SLP", coverBmpPath, file)) {

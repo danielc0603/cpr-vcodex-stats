@@ -43,6 +43,9 @@ class RecentBooksStore {
                   const std::string& coverBmpPath, const std::string& bookId = "");
 
   bool removeBook(const std::string& key);
+  bool repairRenamedBooks(const std::vector<std::string>& livePaths);
+  bool repairOrRemoveMissingBook(const std::string& key);
+  bool repairOrRemoveMissingBooks();
 
   // Get the list of recent books (most recent first)
   const std::vector<RecentBook>& getBooks() const { return recentBooks; }

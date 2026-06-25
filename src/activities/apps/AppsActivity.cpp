@@ -16,7 +16,6 @@
 #include "SyncDayActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "OpdsServerStore.h"
 #include "util/HeaderDateUtils.h"
 #include "util/ShortcutUiMetadata.h"
 
@@ -37,12 +36,7 @@ bool hasShortcut(const std::vector<const ShortcutDefinition*>& shortcuts, const 
                      [id](const ShortcutDefinition* definition) { return definition && definition->id == id; });
 }
 
-bool shortcutAvailableInFirmware(const ShortcutDefinition& definition) {
-  if (definition.id == ShortcutId::OpdsBrowser) {
-    return OPDS_STORE.hasServers();
-  }
-  return true;
-}
+bool shortcutAvailableInFirmware(const ShortcutDefinition& definition) { return true; }
 }  // namespace
 
 void AppsActivity::onEnter() {
@@ -181,6 +175,9 @@ void AppsActivity::openSelectedApp() {
 
   std::unique_ptr<Activity> activity;
   switch (appShortcuts[selectedIndex]->id) {
+    case ShortcutId::Library:
+      activityManager.goToLibrary();
+      return;
     case ShortcutId::BrowseFiles:
       activityManager.goToFileBrowser();
       return;
@@ -221,9 +218,6 @@ void AppsActivity::openSelectedApp() {
     case ShortcutId::Sleep:
       activity = std::make_unique<SleepAppActivity>(renderer, mappedInput);
       break;
-    case ShortcutId::OpdsBrowser:
-      activityManager.goToBrowser();
-      return;
   }
 
   startActivityForResult(std::move(activity), [this](const ActivityResult&) {

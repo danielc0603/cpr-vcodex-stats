@@ -8,7 +8,7 @@
 #include "CrossPointSettings.h"
 
 namespace {
-constexpr uint8_t SLEEP_CACHE_RENDER_VERSION = 2;
+constexpr uint8_t SLEEP_CACHE_RENDER_VERSION = 3;
 
 uint32_t getSourceFileSize(const std::string& sourcePath) {
   FsFile file;

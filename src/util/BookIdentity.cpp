@@ -9,9 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "KOReaderDocumentId.h"
-
 namespace {
+constexpr size_t CONTENT_HASH_CHUNK_SIZE = 1024;
+constexpr int CONTENT_HASH_OFFSET_COUNT = 12;
+
 struct CachedBookIdentity {
   std::string path;
   size_t fileSize = 0;
@@ -54,6 +55,44 @@ size_t getFileSize(const std::string& path) {
   const size_t fileSize = file.fileSize();
   file.close();
   return fileSize;
+}
+
+size_t getContentHashOffset(int i) {
+  if (i < 0) {
+    return 0;
+  }
+  return CONTENT_HASH_CHUNK_SIZE << (2 * i);
+}
+
+std::string calculateSparseContentHash(const std::string& path) {
+  FsFile file;
+  if (!Storage.openFileForRead("BID", path, file)) {
+    return "";
+  }
+
+  const size_t fileSize = file.fileSize();
+  MD5Builder md5;
+  md5.begin();
+
+  uint8_t buffer[CONTENT_HASH_CHUNK_SIZE];
+  for (int i = -1; i < CONTENT_HASH_OFFSET_COUNT - 1; i++) {
+    const size_t offset = getContentHashOffset(i);
+    if (offset >= fileSize) {
+      continue;
+    }
+    if (!file.seekSet(offset)) {
+      continue;
+    }
+    const size_t bytesToRead = std::min(CONTENT_HASH_CHUNK_SIZE, fileSize - offset);
+    const size_t bytesRead = file.read(buffer, bytesToRead);
+    if (bytesRead > 0) {
+      md5.add(buffer, bytesRead);
+    }
+  }
+
+  file.close();
+  md5.calculate();
+  return md5.toString().c_str();
 }
 }  // namespace
 
@@ -107,7 +146,7 @@ std::string calculateContentBookId(const std::string& path) {
     }
   }
 
-  const std::string bookId = KOReaderDocumentId::calculate(normalizedPath);
+  const std::string bookId = calculateSparseContentHash(normalizedPath);
   if (bookId.empty()) {
     return "";
   }

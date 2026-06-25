@@ -49,6 +49,7 @@ class BookMetadataCache {
   uint16_t tocCount;
   bool loaded;
   bool buildMode;
+  bool complete;
 
   FsFile bookFile;
   // Temp file handles during build
@@ -85,7 +86,13 @@ class BookMetadataCache {
   BookMetadata coreMetadata;
 
   explicit BookMetadataCache(std::string cachePath)
-      : cachePath(std::move(cachePath)), lutOffset(0), spineCount(0), tocCount(0), loaded(false), buildMode(false) {}
+      : cachePath(std::move(cachePath)),
+        lutOffset(0),
+        spineCount(0),
+        tocCount(0),
+        loaded(false),
+        buildMode(false),
+        complete(false) {}
   ~BookMetadataCache() = default;
 
   // Building phase (stream to disk immediately)
@@ -101,6 +108,7 @@ class BookMetadataCache {
 
   // Post-processing to update mappings and sizes
   bool buildBookBin(const std::string& epubPath, const BookMetadata& metadata);
+  bool buildMetadataOnlyBookBin(const BookMetadata& metadata);
 
   // Reading phase (read mode)
   bool load();
@@ -109,4 +117,5 @@ class BookMetadataCache {
   int getSpineCount() const { return spineCount; }
   int getTocCount() const { return tocCount; }
   bool isLoaded() const { return loaded; }
+  bool isComplete() const { return complete; }
 };

@@ -26,11 +26,19 @@ class ReaderBookInfoActivity final : public Activity {
     std::string language;
     std::string description;
     std::string identifier;
+    std::string rating;
+    std::string notes;
+    std::string filePath;
+    std::string format;
+    std::string fileSize;
     std::string currentChapter;
     std::string progress;
     std::string totalRead;
     std::string timeLeft;
     std::string lastOpened;
+    std::string sessions;
+    std::string finished;
+    bool hasReadingStats = false;
   };
 
   std::string path;

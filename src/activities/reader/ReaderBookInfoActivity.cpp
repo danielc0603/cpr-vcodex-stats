@@ -1,13 +1,18 @@
 #include "ReaderBookInfoActivity.h"
 
 #include <GfxRenderer.h>
+#include <HalDisplay.h>
 #include <HalStorage.h>
 #include <I18n.h>
 
 #include <algorithm>
+#include <cctype>
 #include <utility>
+#include <vector>
 
 #include "BookMetadataStore.h"
+#include "LibraryMetadataStore.h"
+#include "ManualLibraryStore.h"
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "components/UITheme.h"
@@ -27,6 +32,27 @@ std::string basenameTitle(const std::string& path) {
   return name;
 }
 
+std::string extensionLabel(const std::string& path) {
+  const size_t dot = path.find_last_of('.');
+  if (dot == std::string::npos || dot + 1 >= path.size()) {
+    return "";
+  }
+  std::string extension = path.substr(dot + 1);
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
+  return extension;
+}
+
+std::string formatBytes(const uint64_t bytes) {
+  if (bytes >= 1024ULL * 1024ULL) {
+    return std::to_string(static_cast<unsigned long>(bytes / (1024ULL * 1024ULL))) + " MB";
+  }
+  if (bytes >= 1024ULL) {
+    return std::to_string(static_cast<unsigned long>(bytes / 1024ULL)) + " KB";
+  }
+  return std::to_string(static_cast<unsigned long>(bytes)) + " B";
+}
+
 void mergeIfEmpty(std::string& target, const std::string& source) {
   if (target.empty() && !source.empty()) {
     target = source;
@@ -34,6 +60,16 @@ void mergeIfEmpty(std::string& target, const std::string& source) {
 }
 
 std::string valueOrDash(const std::string& value) { return value.empty() ? "-" : value; }
+
+std::string joinValues(const std::vector<std::string>& values) {
+  std::string joined;
+  for (const auto& value : values) {
+    if (value.empty()) continue;
+    if (!joined.empty()) joined += ", ";
+    joined += value;
+  }
+  return joined;
+}
 
 void drawWrapped(GfxRenderer& renderer, const int fontId, const int x, int& y, const int width,
                  const std::string& text, const int maxLines,
@@ -62,23 +98,61 @@ void ReaderBookInfoActivity::loadInfo() {
   const std::string bookId =
       !normalizedPath.empty() && Storage.exists(normalizedPath.c_str()) ? BookIdentity::resolveStableBookId(normalizedPath) : "";
 
+  const ManualLibraryBook* manual = MANUAL_LIBRARY.findBook(normalizedPath, bookId);
+  const LibraryBookMetadata* libraryMetadata = LIBRARY_METADATA.findBook(!bookId.empty() ? bookId : normalizedPath);
+
   CachedBookMetadata local;
   local.title = title;
   local.author = author;
   local.language = language;
   BOOK_METADATA.importSidecarForBook(normalizedPath, local);
 
+  if (libraryMetadata != nullptr) {
+    info.title = libraryMetadata->title;
+    info.author = libraryMetadata->author;
+    info.series = libraryMetadata->seriesName;
+    info.seriesIndex = !libraryMetadata->seriesNumber.empty()
+                           ? libraryMetadata->seriesNumber
+                           : (!libraryMetadata->seriesIndex.empty() ? libraryMetadata->seriesIndex
+                                                                     : libraryMetadata->seriesTotal);
+    info.tags = libraryMetadata->tags;
+    if (info.tags.empty()) info.tags = libraryMetadata->subjects;
+    info.publisher = libraryMetadata->publisher;
+    info.language = libraryMetadata->language;
+    info.description = !libraryMetadata->description.empty() ? libraryMetadata->description : libraryMetadata->blurb;
+    if (!libraryMetadata->isbn.empty()) {
+      info.identifier = libraryMetadata->isbn;
+    } else if (!libraryMetadata->epubIdentifier.empty()) {
+      info.identifier = libraryMetadata->epubIdentifier;
+    } else if (!libraryMetadata->uuid.empty()) {
+      info.identifier = libraryMetadata->uuid;
+    }
+  }
+
   const CachedBookMetadata* cached = BOOK_METADATA.findBook(normalizedPath, bookId);
   if (cached != nullptr) {
-    info.title = cached->title;
-    info.author = cached->author;
-    info.series = cached->series;
-    info.seriesIndex = cached->seriesIndex;
-    info.tags = cached->tags;
-    info.publisher = cached->publisher;
-    info.language = cached->language;
-    info.description = cached->description;
-    info.identifier = cached->identifier;
+    mergeIfEmpty(info.title, cached->title);
+    mergeIfEmpty(info.author, cached->author);
+    mergeIfEmpty(info.series, cached->series);
+    mergeIfEmpty(info.seriesIndex, cached->seriesIndex);
+    mergeIfEmpty(info.tags, cached->tags);
+    mergeIfEmpty(info.publisher, cached->publisher);
+    mergeIfEmpty(info.language, cached->language);
+    mergeIfEmpty(info.description, cached->description);
+    mergeIfEmpty(info.identifier, cached->identifier);
+  }
+
+  if (manual != nullptr) {
+    if (!manual->manualTitle.empty()) info.title = manual->manualTitle;
+    if (!manual->manualAuthor.empty()) info.author = manual->manualAuthor;
+    if (!manual->manualSeries.empty()) info.series = manual->manualSeries;
+    if (!manual->manualSeriesNumber.empty()) info.seriesIndex = manual->manualSeriesNumber;
+    const std::string manualTags = joinValues(manual->personalTags);
+    if (!manualTags.empty()) info.tags = manualTags;
+    if (manual->rating > 0) info.rating = std::to_string(manual->rating) + "/5";
+    if (!manual->notes.empty()) {
+      info.notes = manual->notes;
+    }
   }
 
   mergeIfEmpty(info.title, title);
@@ -87,13 +161,25 @@ void ReaderBookInfoActivity::loadInfo() {
   if (info.title.empty()) {
     info.title = basenameTitle(normalizedPath);
   }
+  info.filePath = normalizedPath;
+  info.format = extensionLabel(normalizedPath);
+  if (!normalizedPath.empty() && Storage.exists(normalizedPath.c_str())) {
+    auto file = Storage.open(normalizedPath.c_str());
+    if (file) {
+      info.fileSize = formatBytes(file.size());
+      file.close();
+    }
+  }
 
   const ReadingBookStats* stats = READING_STATS.findMatchingBookForPath(normalizedPath, info.title, info.author);
   if (stats != nullptr) {
+    info.hasReadingStats = true;
     mergeIfEmpty(info.author, stats->author);
     info.progress = std::to_string(stats->lastProgressPercent) + "%";
     info.totalRead = ReadingStatsAnalytics::formatDurationHm(stats->totalReadingMs);
     info.currentChapter = !currentChapter.empty() ? currentChapter : stats->chapterTitle;
+    info.sessions = std::to_string(stats->sessions);
+    info.finished = stats->completed ? tr(STR_YES) : tr(STR_NO);
     if (stats->lastReadAt > 0) {
       info.lastOpened = TimeUtils::formatDate(stats->lastReadAt);
     }
@@ -179,9 +265,7 @@ void ReaderBookInfoActivity::render(RenderLock&&) {
     y += height + 10;
   };
 
-  drawCard(92, [&](const int x, int& cardY, const int width) {
-    renderer.drawText(SMALL_FONT_ID, x, cardY, tr(STR_CURRENT_BOOK), true, EpdFontFamily::BOLD);
-    cardY += renderer.getLineHeight(SMALL_FONT_ID) + 4;
+  drawCard(86, [&](const int x, int& cardY, const int width) {
     drawWrapped(renderer, UI_12_FONT_ID, x, cardY, width, valueOrDash(info.title), 2, EpdFontFamily::BOLD);
     if (!info.author.empty()) {
       cardY += 2;
@@ -194,22 +278,25 @@ void ReaderBookInfoActivity::render(RenderLock&&) {
     }
   });
 
-  drawCard(112, [&](const int x, int& cardY, const int width) {
-    renderer.drawText(UI_10_FONT_ID, x, cardY, tr(STR_READING), true, EpdFontFamily::BOLD);
-    cardY += renderer.getLineHeight(UI_10_FONT_ID) + 6;
-    const int colWidth = (width - 8) / 2;
-    const auto drawMetric = [&](const int col, const int row, const char* label, const std::string& value) {
-      const int mx = x + col * (colWidth + 8);
-      const int my = cardY + row * 32;
-      renderer.drawText(SMALL_FONT_ID, mx, my, label, true, EpdFontFamily::BOLD);
-      const std::string safe = renderer.truncatedText(SMALL_FONT_ID, valueOrDash(value).c_str(), colWidth);
-      renderer.drawText(SMALL_FONT_ID, mx, my + 13, safe.c_str());
-    };
-    drawMetric(0, 0, tr(STR_CURRENT_PROGRESS), info.progress);
-    drawMetric(1, 0, tr(STR_TOTAL_READ), info.totalRead);
-    drawMetric(0, 1, tr(STR_TIME_LEFT), info.timeLeft);
-    drawMetric(1, 1, tr(STR_LAST_OPENED), info.lastOpened);
-  });
+  if (info.hasReadingStats) {
+    drawCard(112, [&](const int x, int& cardY, const int width) {
+      renderer.drawText(UI_10_FONT_ID, x, cardY, tr(STR_READING), true, EpdFontFamily::BOLD);
+      cardY += renderer.getLineHeight(UI_10_FONT_ID) + 6;
+      const int colWidth = (width - 8) / 2;
+      const auto drawMetric = [&](const int col, const int row, const char* label, const std::string& value) {
+        if (value.empty()) return;
+        const int mx = x + col * (colWidth + 8);
+        const int my = cardY + row * 32;
+        renderer.drawText(SMALL_FONT_ID, mx, my, label, true, EpdFontFamily::BOLD);
+        const std::string safe = renderer.truncatedText(SMALL_FONT_ID, value.c_str(), colWidth);
+        renderer.drawText(SMALL_FONT_ID, mx, my + 13, safe.c_str());
+      };
+      drawMetric(0, 0, tr(STR_CURRENT_PROGRESS), info.progress);
+      drawMetric(1, 0, tr(STR_TOTAL_READ), info.totalRead);
+      drawMetric(0, 1, tr(STR_LAST_OPENED), info.lastOpened);
+      drawMetric(1, 1, tr(STR_FINISHED), info.finished);
+    });
+  }
 
   if (!info.currentChapter.empty()) {
     drawCard(54, [&](const int x, int& cardY, const int width) {
@@ -220,7 +307,8 @@ void ReaderBookInfoActivity::render(RenderLock&&) {
   }
 
   const bool hasMetadata = !info.series.empty() || !info.seriesIndex.empty() || !info.tags.empty() ||
-                           !info.publisher.empty() || !info.language.empty() || !info.identifier.empty();
+                           !info.publisher.empty() || !info.language.empty() || !info.identifier.empty() ||
+                           !info.rating.empty() || !info.notes.empty();
   if (hasMetadata) {
     int rowCount = 0;
     rowCount += !info.series.empty();
@@ -229,6 +317,8 @@ void ReaderBookInfoActivity::render(RenderLock&&) {
     rowCount += !info.publisher.empty();
     rowCount += !info.language.empty();
     rowCount += !info.identifier.empty();
+    rowCount += !info.rating.empty();
+    rowCount += !info.notes.empty();
     const int detailHeight = 34 + rowCount * (renderer.getLineHeight(SMALL_FONT_ID) + 5);
     drawCard(detailHeight, [&](const int x, int& cardY, const int width) {
       renderer.drawText(UI_10_FONT_ID, x, cardY, tr(STR_DETAILS), true, EpdFontFamily::BOLD);
@@ -247,6 +337,31 @@ void ReaderBookInfoActivity::render(RenderLock&&) {
       drawRow(tr(STR_PUBLISHER), info.publisher);
       drawRow(tr(STR_LANGUAGE), info.language);
       drawRow(tr(STR_IDENTIFIER), info.identifier);
+      drawRow(tr(STR_RATING), info.rating);
+      drawRow(tr(STR_NOTES), info.notes);
+    });
+  }
+
+  if (!info.filePath.empty() || !info.format.empty() || !info.fileSize.empty()) {
+    int rowCount = 0;
+    rowCount += !info.filePath.empty();
+    rowCount += !info.format.empty();
+    rowCount += !info.fileSize.empty();
+    const int fileHeight = 34 + rowCount * (renderer.getLineHeight(SMALL_FONT_ID) + 5);
+    drawCard(fileHeight, [&](const int x, int& cardY, const int width) {
+      renderer.drawText(UI_10_FONT_ID, x, cardY, tr(STR_FILE), true, EpdFontFamily::BOLD);
+      cardY += renderer.getLineHeight(UI_10_FONT_ID) + 6;
+      const int labelWidth = 74;
+      const auto drawRow = [&](const char* label, const std::string& value) {
+        if (value.empty()) return;
+        renderer.drawText(SMALL_FONT_ID, x, cardY, label, true, EpdFontFamily::BOLD);
+        const std::string safe = renderer.truncatedText(SMALL_FONT_ID, value.c_str(), width - labelWidth - 6);
+        renderer.drawText(SMALL_FONT_ID, x + labelWidth, cardY, safe.c_str());
+        cardY += renderer.getLineHeight(SMALL_FONT_ID) + 5;
+      };
+      drawRow(tr(STR_PATH), info.filePath);
+      drawRow(tr(STR_FORMAT), info.format);
+      drawRow(tr(STR_FILE_SIZE), info.fileSize);
     });
   }
 
@@ -275,5 +390,5 @@ void ReaderBookInfoActivity::render(RenderLock&&) {
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_IMPORT_METADATA), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer();
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
